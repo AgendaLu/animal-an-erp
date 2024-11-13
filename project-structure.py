@@ -10,10 +10,14 @@ animal-an-erp/
 │   └── .gitkeep
 ├── models/
 │   ├── __init__.py
+│   ├── base.py    
 │   ├── database.py
+│   ├── enums.py
 │   ├── inventory.py
 │   ├── manufacturing.py
 │   ├── order.py
+│   ├── partner.py
+│   ├── payment.py
 │   ├── product.py
 │   └── user.py
 ├── viewmodels/
