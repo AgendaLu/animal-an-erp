@@ -1,10 +1,12 @@
 """
 main.py: Application Entry Point
-Initial version for testing database connection
 """
 
+import sys
 from pathlib import Path
-from models.database import init_db, ItemType, Item
+from PyQt5.QtWidgets import QApplication
+from models.database import init_db
+from views.main_window import MainWindow
 
 def setup_environment():
     """設定必要的目錄"""
@@ -12,33 +14,54 @@ def setup_environment():
     for dir_name in ['data', 'logs']:
         (base_dir / dir_name).mkdir(exist_ok=True)
 
-def test_database():
-    """測試資料庫連線和基本操作"""
+def init_application():
+    """初始化應用程式"""
     try:
         # 初始化資料庫
         session = init_db()
-        
-        # 測試新增一筆資料
-        test_item = Item(
-            name="測試商品",
-            type=ItemType.FOOD,
-            description="這是一個測試用商品",
-            unit="包"
-        )
-        
-        session.add(test_item)
-        session.commit()
-        
-        print("資料庫測試成功！")
-        print(f"已新增測試商品: {test_item.name}")
-        
+        return session
     except Exception as e:
-        print(f"資料庫測試失敗: {str(e)}")
+        print(f"初始化失敗: {str(e)}")
+        sys.exit(1)
 
 def main():
     """應用程式主入口"""
+    # 設定環境
     setup_environment()
-    test_database()
+    
+    # 初始化資料庫
+    session = init_application()
+    
+    # 創建 Qt 應用程式
+    app = QApplication(sys.argv)
+    
+    # 創建並顯示主視窗
+    window = MainWindow()
+    window.show()
+    
+    # 執行應用程式
+    sys.exit(app.exec_())
+
+if __name__ == "__main__":
+    main()
+    
+# main.py
+from models import db_manager, Product, ProductType
+
+def main():
+    # Initialize database
+    db_manager.init_db()
+    
+    # Get session
+    with db_manager.get_session() as session:
+        # Create new product
+        new_product = Product(
+            name="Vaccine A",
+            product_type=ProductType.VACCINE,
+            # ... other fields
+        )
+        session.add(new_product)
+        session.commit()
 
 if __name__ == "__main__":
     main()

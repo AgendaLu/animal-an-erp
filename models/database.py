@@ -1,87 +1,92 @@
-"""
-database.py: Core database models and connection management
-Updated with provider and material management
-"""
-
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Enum
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
-from datetime import datetime
-import enum
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
 from pathlib import Path
+import logging
+from typing import Optional
+from contextlib import contextmanager
 
-Base = declarative_base()
+from .base import Base
 
-class ItemType(enum.Enum):
-    """商品類型列舉"""
-    MATERIAL = "原料"  # 原料
-    PRODUCT = "商品"   # 成品
-    SUPPLY = "耗材"    # 耗材
+# Set up logging
+logger = logging.getLogger(__name__)
 
-class Provider(Base):
-    """供應商資料表"""
-    __tablename__ = 'providers'
+class DatabaseManager:
+    """Database management class"""
+    _instance = None
     
-    id = Column(Integer, primary_key=True)
-    name = Column(String(100), nullable=False, comment='供應商名稱')
-    contact = Column(String(100), comment='聯絡人')
-    phone = Column(String(20), comment='電話')
-    email = Column(String(100), comment='Email')
-    address = Column(String(200), comment='地址')
-    notes = Column(String(500), comment='備註')
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance.initialized = False
+        return cls._instance
     
-    # 關聯
-    materials = relationship("Material", back_populates="provider")
+    def __init__(self):
+        if not self.initialized:
+            self.engine = None
+            self.SessionLocal = None
+            self.initialized = True
+    
+    def init_db(self, db_path: Optional[str] = None) -> None:
+        """Initialize the database"""
+        try:
+            if db_path is None:
+                # Create data directory if it doesn't exist
+                data_dir = Path(__file__).parent.parent / 'data'
+                data_dir.mkdir(exist_ok=True)
+                db_path = data_dir / 'animal_an.db'
+            
+            # Create engine
+            self.engine = create_engine(
+                f"sqlite:///{db_path}",
+                echo=False,
+                connect_args={"check_same_thread": False}
+            )
+            
+            # Create all tables
+            Base.metadata.create_all(self.engine)
+            
+            # Create sessionmaker
+            self.SessionLocal = sessionmaker(
+                autocommit=False,
+                autoflush=False,
+                bind=self.engine
+            )
+            
+            logger.info("Database initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Database initialization error: {str(e)}")
+            raise
+    
+    def get_session(self) -> Session:
+        """Get a database session"""
+        if self.SessionLocal is None:
+            self.init_db()
+        return self.SessionLocal()
+    
+    @contextmanager
+    def session_scope(self):
+        """Provide a transactional scope around a series of operations."""
+        session = self.get_session()
+        try:
+            yield session
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
-class Material(Base):
-    """原料資料表"""
-    __tablename__ = 'materials'
-    
-    id = Column(Integer, primary_key=True)
-    sku = Column(String(50), unique=True, nullable=False, comment='料號')
-    name = Column(String(100), nullable=False, comment='品名')
-    unit = Column(String(20), nullable=False, comment='單位')
-    amount = Column(Float, default=0, comment='數量')
-    min_amount = Column(Float, default=0, comment='最小安全存量')
-    provider_id = Column(Integer, ForeignKey('providers.id'), comment='供應商ID')
-    notes = Column(String(500), comment='備註')
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # 關聯
-    provider = relationship("Provider", back_populates="materials")
-    inventory_logs = relationship("MaterialLog", back_populates="material")
+# Create global instance
+db_manager = DatabaseManager()
 
-class MaterialLog(Base):
-    """原料異動記錄表"""
-    __tablename__ = 'material_logs'
-    
-    id = Column(Integer, primary_key=True)
-    material_id = Column(Integer, ForeignKey('materials.id'), comment='原料ID')
-    action_type = Column(String(20), nullable=False, comment='異動類型(入庫/出庫)')
-    amount_change = Column(Float, nullable=False, comment='異動數量')
-    amount_after = Column(Float, nullable=False, comment='異動後數量')
-    notes = Column(String(500), comment='備註')
-    created_at = Column(DateTime, default=datetime.utcnow)
-    created_by = Column(String(50), comment='建立者')
-    
-    # 關聯
-    material = relationship("Material", back_populates="inventory_logs")
+# For backwards compatibility
+def init_db() -> Session:
+    """Initialize the database and return a session (legacy support)"""
+    db_manager.init_db()
+    return db_manager.get_session()
 
-def get_db_path():
-    """取得資料庫檔案路徑"""
-    project_dir = Path(__file__).parent.parent
-    data_dir = project_dir / "data"
-    data_dir.mkdir(exist_ok=True)
-    return data_dir / "inventory.db"
-
-def init_db():
-    """初始化資料庫連線和表格"""
-    db_path = get_db_path()
-    db_url = f"sqlite:///{db_path}"
-    engine = create_engine(db_url)
-    Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    return Session()
+# Function to get database session
+def get_db() -> Session:
+    """Get database session"""
+    return db_manager.get_session()
