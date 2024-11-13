@@ -44,3 +44,24 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+# main.py
+from models import db_manager, Product, ProductType
+
+def main():
+    # Initialize database
+    db_manager.init_db()
+    
+    # Get session
+    with db_manager.get_session() as session:
+        # Create new product
+        new_product = Product(
+            name="Vaccine A",
+            product_type=ProductType.VACCINE,
+            # ... other fields
+        )
+        session.add(new_product)
+        session.commit()
+
+if __name__ == "__main__":
+    main()
