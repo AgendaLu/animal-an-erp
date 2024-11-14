@@ -81,7 +81,7 @@ class InventoryTransaction(Base):
     transaction_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
-    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    # created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     
     # Relationships
     batch: Mapped["MaterialBatch"] = relationship(

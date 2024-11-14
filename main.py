@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from PyQt5.QtWidgets import QApplication
 from models.database import init_db
-from views.main_window import MainWindow
+from views.homepage import Homepage
 
 def setup_environment():
     """設定必要的目錄"""
@@ -36,32 +36,11 @@ def main():
     app = QApplication(sys.argv)
     
     # 創建並顯示主視窗
-    window = MainWindow()
+    window = Homepage(session)
     window.show()
     
     # 執行應用程式
     sys.exit(app.exec_())
-
-if __name__ == "__main__":
-    main()
-    
-# main.py
-from models import db_manager, Product, ProductType
-
-def main():
-    # Initialize database
-    db_manager.init_db()
-    
-    # Get session
-    with db_manager.get_session() as session:
-        # Create new product
-        new_product = Product(
-            name="Vaccine A",
-            product_type=ProductType.VACCINE,
-            # ... other fields
-        )
-        session.add(new_product)
-        session.commit()
 
 if __name__ == "__main__":
     main()
