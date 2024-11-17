@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from models.inventory import Material, MaterialBatch, InventoryTransaction, TransactionType, ReferenceType
 from utils.validators import validate_code
 from utils.logger import get_logger
+from views.components.datetime_picker import DateTimePicker
 
 logger = get_logger(__name__)
 
@@ -87,7 +88,8 @@ class InventoryViewModel:
                         transaction_type: TransactionType,
                         reference_type: ReferenceType,
                         reference_id: int,
-                        notes: str = None) -> Tuple[bool, str]:
+                        notes: str = None,
+                        transaction_date: Optional[datetime] = None) -> Tuple[bool, str]:
         """
         Adjust inventory quantity (increase/decrease)
         
@@ -99,11 +101,15 @@ class InventoryViewModel:
             reference_type: Type of reference document (PO/SO)
             reference_id: ID of reference document
             notes: Additional notes
+            transaction_date: Date and time of the transaction
             
         Returns:
             Tuple[bool, str]: (success, message)
         """
         try:
+            if transaction_date is None:
+                transaction_date = select_datetime()
+
             material = self.get_material(material_code)
             if not material:
                 return False, f"Material {material_code} not found"
@@ -129,7 +135,8 @@ class InventoryViewModel:
                 quantity=quantity,
                 reference_type=reference_type,
                 reference_id=reference_id,
-                notes=notes
+                notes=notes,
+                transaction_date=transaction_date
             )
 
             # Update batch quantity
