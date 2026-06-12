@@ -1,0 +1,33 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Animal-AN-ERP Debug",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/Users/yicheng/Documents/GitHub/animal-an-erp/main.py",
+            "python": "/Users/yicheng/Documents/GitHub/animal-an-erp/.venv/bin/python",
+            "args": [],
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "/Users/yicheng/Documents/GitHub/animal-an-erp"
+            },
+            "envFile": "/Users/yicheng/Documents/GitHub/animal-an-erp/.env",
+            "justMyCode": false,
+            "cwd": "/Users/yicheng/Documents/GitHub/animal-an-erp"
+        },
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "python": "/Users/yicheng/Documents/GitHub/animal-an-erp/.venv/bin/python",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "/Users/yicheng/Documents/GitHub/animal-an-erp"
+            },
+            "envFile": "/Users/yicheng/Documents/GitHub/animal-an-erp/.env"
+        }
+    ]
+}
