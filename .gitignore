@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# Environments
+.venv/
+.conda/
+
+# Logs
+logs/
+
+# Database backups
+data/*_pre_v*.db
+
+# macOS
+.DS_Store
