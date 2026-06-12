@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 80" fill="none"
+     stroke="#155EE4" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 豬側面線條 logo：正圓身體 + 捲一圈的豬尾巴，線寬 8 -->
+  <circle cx="42" cy="40" r="27"/>
+  <path d="M30 15 C 33 5, 44 4, 47 13"/>
+  <path d="M30 36 l 0.01 0"/>
+  <path d="M32 66 V 74"/>
+  <path d="M54 66 V 74"/>
+  <path d="M68 30 C 76 18, 92 20, 92 32 C 92 42, 78 44, 76 34"/>
+</svg>

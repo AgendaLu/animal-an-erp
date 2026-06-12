@@ -1,0 +1,266 @@
+/* =============================================================
+   EasyStore Unite — Design System Tokens
+   Reconstructed from admin-unite (src/assets/sass/base.scss,
+   tailwind.config.js, _facil-button.scss, _card.scss) and the
+   Unite Figma file (COLOR / TYPOGRAPHY / SHADOW frames).
+   ============================================================= */
+
+@font-face {
+  font-family: "Inter";
+  src: url("../fonts/Inter.ttf") format("truetype-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("../fonts/Inter-Italic.ttf") format("truetype-variations");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* ----------------------------------------------------------
+     BASE PALETTE  (HSL triplets — wrap in hsl() to use)
+     Same shape as the production codebase so consumers can
+     swap-in `var(--color-primary)` directly inside hsl().
+     ---------------------------------------------------------- */
+
+  /* Primary — EasyStore brand blue */
+  --color-primary-h: 219;
+  --color-primary-s: 83%;
+  --color-primary-l: 49%;
+  --color-primary:        var(--color-primary-h), var(--color-primary-s), 49%;
+  --color-primary-lighter: var(--color-primary-h), var(--color-primary-s), 62%;
+  --color-primary-darker:  var(--color-primary-h), var(--color-primary-s), 52%;
+
+  /* Semantic colors */
+  --color-danger:         0, 60%, 51%;     /* #cd3333-ish */
+  --color-danger-lighter: 0, 60%, 60%;
+  --color-danger-darker:  0, 60%, 45%;
+
+  --color-success:         120, 75%, 37%;  /* deep green */
+  --color-success-lighter: 120, 75%, 40%;
+
+  --color-warning:         42, 85%, 50%;
+  --color-warning-lighter: 42, 85%, 96%;
+  --color-warning-darker:  42, 53%, 31%;
+
+  --color-info:         213, 33%, 93%;
+  --color-info-lighter: 213, 33%, 98%;
+  --color-info-darker:  213, 33%, 88%;
+
+  /* Upgrade / Pro (purple) */
+  --color-upgrade:         256, 90.7%, 62%;
+  --color-upgrade-lighter: 256, 90.7%, 69%;
+  --color-upgrade-darker:  256, 90.7%, 51%;
+
+  /* Decorative accents (channels, brand chrome) */
+  --color-pink: #ff5588;     /* secondary brand accent — used in cart logo + “channel” gradient */
+  --color-indicator: #f58a42;
+
+  /* ----------------------------------------------------------
+     SURFACES & TEXT
+     ---------------------------------------------------------- */
+  --text-default:      216, 28%, 23%;      /* #2A374A */
+  --text-muted:        220, 6%, 61%;       /* #969AA3 */
+  --text-sidebar-icon: 215, 16%, 80%;
+  --text-link:         220, 59%, 44%;      /* #2E5AB1 */
+  --text-link-darker:  220, 59%, 60%;
+
+  /* Cool light-gray app canvas. Sidebar shares the body tone — */
+  /* there is no contrasting dark sidebar in Unite.              */
+  --bg-body:           213, 30%, 95%;      /* #ECEFF4 */
+  --bg-toolbar:        213, 32%, 97%;
+  --bg-sidebar:        213, 30%, 95%;
+  --bg-sidebar-active: 220, 34%, 91%;
+  --bg-table:          213, 27%, 98%;
+  --bg-card-secondary: 0, 0%, 97%;
+  --bg-card:           0, 0%, 100%;        /* pure-white card surface */
+  --bg-highlight:      218, 60%, 49%;      /* #2F66CD — sub-tone of primary */
+
+  /* Borders */
+  --border-default:        212, 29%, 91%;  /* #E3E7EB */
+  --border-default-darker: 213, 27%, 80%;
+  --border-sidebar:        213, 16%, 90%;
+  --border-table:          0, 0%, 95%;
+
+  /* Default ("general") button surface */
+  --btn-default-bg:     213, 30%, 88%;
+  --btn-default-border: 213, 30%, 88%;
+
+  /* ----------------------------------------------------------
+     TYPOGRAPHY
+     ---------------------------------------------------------- */
+  --font-sans:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "PingFang SC", "IBM Plex Sans Thai",
+    "Microsoft YaHei", sans-serif;
+  --font-display: "Playfair Display", "Inter", serif; /* used sparsely (.font-playfair) */
+
+  /* Scale — admin-unite uses Windi defaults; the Figma uses these px values */
+  --fs-xs:   12px;   /* labels, badges, helper text */
+  --fs-sm:   13px;   /* table dense rows */
+  --fs-base: 14px;   /* body */
+  --fs-md:   15px;
+  --fs-lg:   16px;   /* body large */
+  --fs-xl:   18px;   /* card heading */
+  --fs-2xl:  20px;
+  --fs-3xl:  24px;   /* page title */
+  --fs-4xl:  28px;
+  --fs-5xl:  30px;
+  --fs-display: 45px;
+
+  --lh-tight:  1.15;
+  --lh-snug:   1.3;
+  --lh-normal: 1.5;
+  --lh-loose:  1.7;
+
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semibold: 600;
+  --fw-bold:    700;
+
+  /* Global letter-spacing tightener (matches base.scss) */
+  --tracking-body: -0.005em;
+
+  /* ----------------------------------------------------------
+     RADII
+     ---------------------------------------------------------- */
+  --radius-none: 0;
+  --radius-sm:   4px;
+  --radius-md:   8px;     /* DEFAULT — buttons, inputs, cards */
+  --radius-lg:   12px;    /* large cards, modal */
+  --radius-xl:   16px;
+  --radius-pill: 9999px;
+  --radius-badge: 20px;   /* per Figma badge guideline */
+
+  /* ----------------------------------------------------------
+     SHADOWS
+     ---------------------------------------------------------- */
+  --shadow-card:           0 10px 15px -3px hsl(0deg 0% 60% / 25%);
+  --shadow-card-secondary: 0 4px 8px -4px hsl(0deg 0% 60% / 10%);
+  --shadow-figma-card:     0 0 15px 0 rgba(116, 116, 116, 0.1);     /* Figma spec */
+  --shadow-sm:             0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md:             0 0 10px 1px rgba(0, 0, 0, 0.1);
+  --shadow-lg:             0 10px 15px rgb(0 0 0 / 10%);
+  --shadow-xl:             0 5px 30px rgba(0, 0, 0, 0.35);
+  --shadow-inset:          inset 1px 1px 0 0 rgb(0 0 0 / 4%);
+  --shadow-btn:            0 2px 2px 0 rgba(0, 0, 0, 0.1);
+  --shadow-btn-active:     inset 0 2px 2px 0 rgba(0, 0, 0, 0.1);
+
+  /* ----------------------------------------------------------
+     SPACING (Windi base — 0.25rem step)
+     ---------------------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* Common input heights */
+  --input-h:    2.25rem;  /* 36 */
+  --input-h-lg: 2.5rem;
+  --input-h-xl: 3rem;
+
+  /* ----------------------------------------------------------
+     MOTION
+     ---------------------------------------------------------- */
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+}
+
+/* ============================================================
+   DARK MODE  (admin-unite uses `.dark` class on html)
+   ============================================================ */
+.dark {
+  --text-default:      0, 0%, 90%;
+  --text-sidebar-icon: 0, 0%, 61%;
+  --text-link:         220, 85%, 62%;
+  --text-link-darker:  220, 85%, 70%;
+  --bg-body:           240, 2%, 10%;
+  --bg-toolbar:        240, 2%, 14%;
+  --bg-sidebar:        0, 0%, 13%;
+  --bg-sidebar-active: 0, 0%, 32%;
+  --bg-table:          0, 0%, 20%;
+  --bg-card:           240, 2%, 14%;
+  --bg-card-secondary: 240, 2%, 21%;
+  --border-default:        0, 0%, 25%;
+  --border-default-darker: 0, 0%, 32%;
+  --border-sidebar:        0, 0%, 13%;
+  --border-table:          0, 0%, 25%;
+  --btn-default-bg:     0, 0%, 20%;
+  --btn-default-border: 0, 0%, 25%;
+}
+
+/* ============================================================
+   BASE & SEMANTIC TYPOGRAPHY
+   Use these tags / utility classes for general writing.
+   ============================================================ */
+
+html, body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
+  letter-spacing: var(--tracking-body);
+  color: hsl(var(--text-default));
+  background: hsl(var(--bg-body));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, .h1 {
+  font-size: var(--fs-3xl);
+  line-height: var(--lh-tight);
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.01em;
+  color: hsl(var(--text-default));
+}
+h2, .h2 {
+  font-size: var(--fs-2xl);
+  line-height: var(--lh-snug);
+  font-weight: var(--fw-bold);
+  color: hsl(var(--text-default));
+}
+h3, .h3 {
+  font-size: var(--fs-xl);
+  line-height: var(--lh-snug);
+  font-weight: var(--fw-bold);
+  color: hsl(var(--text-default));
+}
+h4, .h4 {
+  font-size: var(--fs-lg);
+  line-height: var(--lh-snug);
+  font-weight: var(--fw-semibold);
+}
+h5, .h5 {
+  font-size: var(--fs-base);
+  line-height: var(--lh-snug);
+  font-weight: var(--fw-semibold);
+}
+
+p, .body { font-size: var(--fs-base); line-height: var(--lh-normal); }
+.body-lg { font-size: var(--fs-lg); line-height: 1.45; }
+.body-sm { font-size: var(--fs-sm); line-height: 1.5; }
+.caption { font-size: var(--fs-xs); line-height: 1.4; color: hsl(var(--text-muted)); }
+
+.text-muted    { color: hsl(var(--text-muted)); }
+.text-default  { color: hsl(var(--text-default)); }
+.text-link     { color: hsl(var(--text-link)); }
+.text-critical { color: hsl(178, 56%, 45%); color: rgb(178, 49, 79); }
+.text-warning  { color: rgb(121, 96, 37); }
+.text-success  { color: rgb(36, 137, 97); }
+
+code, kbd, pre, samp {
+  font-family: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo,
+               Consolas, "Liberation Mono", monospace;
+  font-size: 0.92em;
+}
