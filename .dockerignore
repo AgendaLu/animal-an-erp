@@ -1,0 +1,51 @@
+# Git
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+
+# IDEs
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache
+.coverage
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+data/*.db
+data/backups/*
+logs/*
+*.db-journal
+test_material.png
+
+# CI/CD
+.github
+Jenkinsfile
+.circleci
