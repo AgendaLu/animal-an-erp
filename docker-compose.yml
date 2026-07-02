@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: animal-an-erp-web
+    ports:
+      - "8000:8000"
+    volumes:
+      # Database persistence
+      - ./data:/app/data
+      # Logs persistence
+      - ./logs:/app/logs
+    environment:
+      - ANIMAL_AN_ENV=production
+    restart: unless-stopped
+    networks:
+      - erp-network
+
+networks:
+  erp-network:
+    driver: bridge
+
+volumes:
+  db-data:
+    driver: local

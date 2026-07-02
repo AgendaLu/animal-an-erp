@@ -27,6 +27,7 @@ from models.enums import (
     SupplierType, CustomerType,
 )
 from viewmodels.inventory_vm import InventoryViewModel
+from viewmodels.accounting_vm import AccountingViewModel
 
 app = FastAPI(title="Animal-AN ERP", docs_url="/api/docs")
 
@@ -414,6 +415,108 @@ def valuation():
     s = db_manager.get_session()
     try:
         return InventoryViewModel(s).get_stock_valuation()
+    finally:
+        s.close()
+
+
+# ------------------------------------------------------------------ #
+# Accounting — invoices, payments, reports (AccountingViewModel)
+# ------------------------------------------------------------------ #
+@app.post("/api/accounting/sales-invoices")
+def create_sales_invoice(payload: dict = Body(...)):
+    s = db_manager.get_session()
+    try:
+        header = dict(payload.get('header') or {})
+        for k in ('invoice_date', 'due_date'):
+            if isinstance(header.get(k), str):
+                header[k] = date.fromisoformat(header[k])
+        inv = AccountingViewModel(s).create_sales_invoice(
+            header, payload.get('lines') or [])
+        s.commit()
+        return {"id": inv.id, "invoice_number": inv.invoice_number,
+                "total_amount_with_tax": inv.total_amount_with_tax}
+    except ValueError as e:
+        s.rollback()
+        raise HTTPException(400, str(e))
+    finally:
+        s.close()
+
+
+@app.post("/api/accounting/purchase-invoices")
+def create_purchase_invoice(payload: dict = Body(...)):
+    s = db_manager.get_session()
+    try:
+        header = dict(payload.get('header') or {})
+        for k in ('invoice_date', 'due_date'):
+            if isinstance(header.get(k), str):
+                header[k] = date.fromisoformat(header[k])
+        inv = AccountingViewModel(s).create_purchase_invoice(
+            header, payload.get('lines') or [])
+        s.commit()
+        return {"id": inv.id, "invoice_number": inv.invoice_number,
+                "total_amount_with_tax": inv.total_amount_with_tax}
+    except ValueError as e:
+        s.rollback()
+        raise HTTPException(400, str(e))
+    finally:
+        s.close()
+
+
+@app.post("/api/accounting/payments")
+def record_payment(payload: dict = Body(...)):
+    s = db_manager.get_session()
+    try:
+        if isinstance(payload.get('transaction_date'), str):
+            payload['transaction_date'] = date.fromisoformat(payload['transaction_date'])
+        rec = AccountingViewModel(s).record_payment(payload)
+        s.commit()
+        return {"id": rec.id, "payment_number": rec.payment_number,
+                "amount": rec.amount}
+    except (ValueError, KeyError) as e:
+        s.rollback()
+        raise HTTPException(400, str(e))
+    finally:
+        s.close()
+
+
+@app.get("/api/accounting/reports/daily-sales")
+def daily_sales_report(report_date: str):
+    s = db_manager.get_session()
+    try:
+        return AccountingViewModel(s).daily_sales_report(date.fromisoformat(report_date))
+    finally:
+        s.close()
+
+
+@app.get("/api/accounting/reports/tax")
+def monthly_tax_report(period: str, save: bool = False):
+    s = db_manager.get_session()
+    try:
+        summary = AccountingViewModel(s).monthly_tax_summary(period, save=save)
+        if save:
+            s.commit()
+        return summary
+    except ValueError as e:
+        s.rollback()
+        raise HTTPException(400, str(e))
+    finally:
+        s.close()
+
+
+@app.get("/api/accounting/receivables")
+def receivables(outstanding_only: bool = True):
+    s = db_manager.get_session()
+    try:
+        return AccountingViewModel(s).receivables(outstanding_only=outstanding_only)
+    finally:
+        s.close()
+
+
+@app.get("/api/accounting/payables")
+def payables(outstanding_only: bool = True):
+    s = db_manager.get_session()
+    try:
+        return AccountingViewModel(s).payables(outstanding_only=outstanding_only)
     finally:
         s.close()
 
@@ -898,6 +1001,12 @@ def index():
     return PAGE
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Console entry point (animal-an-web) — host/port/reload 由 config.environments 依 ANIMAL_AN_ENV 決定"""
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    from config.environments import current_config as cfg
+    uvicorn.run("web.app:app", host=cfg.API_HOST, port=cfg.API_PORT, reload=cfg.API_RELOAD)
+
+
+if __name__ == "__main__":
+    main()

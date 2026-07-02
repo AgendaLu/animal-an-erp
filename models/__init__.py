@@ -16,6 +16,14 @@ from .inventory import (
     Material, MaterialBatch  # legacy aliases
 )
 from .payment import Payment
+from .accounting import (
+    SalesInvoice, SalesTransaction,
+    PurchaseInvoice, PurchaseTransaction,
+    PaymentRecord, InventoryMovement, InventoryCount,
+    TaxRecord, AccountsReceivable, AccountsPayable,
+    InvoicePaymentStatus, PaymentType, TaxClassification,
+    MovementItemType, MovementType, TaxType, FilingStatus
+)
 from .database import db_manager, get_db
 
 __all__ = [
@@ -50,6 +58,23 @@ __all__ = [
     'Material',
     'MaterialBatch',
     'Payment',
+    'SalesInvoice',
+    'SalesTransaction',
+    'PurchaseInvoice',
+    'PurchaseTransaction',
+    'PaymentRecord',
+    'InventoryMovement',
+    'InventoryCount',
+    'TaxRecord',
+    'AccountsReceivable',
+    'AccountsPayable',
+    'InvoicePaymentStatus',
+    'PaymentType',
+    'TaxClassification',
+    'MovementItemType',
+    'MovementType',
+    'TaxType',
+    'FilingStatus',
     'db_manager',
     'get_db'
 ]
