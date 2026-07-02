@@ -1001,6 +1001,12 @@ def index():
     return PAGE
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Console entry point (animal-an-web) — host/port/reload 由 config.environments 依 ANIMAL_AN_ENV 決定"""
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    from config.environments import current_config as cfg
+    uvicorn.run("web.app:app", host=cfg.API_HOST, port=cfg.API_PORT, reload=cfg.API_RELOAD)
+
+
+if __name__ == "__main__":
+    main()

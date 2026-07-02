@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "animal-an-erp"
+version = "0.4.0"
+description = "Enterprise Resource Planning system for Animal-An, a regional reseller of animal health products"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "YiCheng Lu", email = "chlueying@gmail.com"}
+]
+
+keywords = [
+    "erp",
+    "inventory-management",
+    "sales",
+    "accounting",
+    "animal-health"
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: Chinese (Traditional)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Office/Business",
+]
+
+dependencies = [
+    "sqlalchemy>=2.0.25,<3",
+    "typing-extensions>=4.9.0",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.24.0",
+    "httpx>=0.24.0",
+]
+
+[project.optional-dependencies]
+# 桌面版（PyQt5 views）才需要；web/webview 部署不用裝
+gui = [
+    "pyqt5>=5.15.9,<5.16",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=22.0",
+    "flake8>=4.0",
+    "mypy>=0.990",
+]
+
+docker = [
+    "docker>=6.0",
+    "docker-compose>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/AgendaLu/animal-an-erp"
+Documentation = "https://github.com/AgendaLu/animal-an-erp#readme"
+Repository = "https://github.com/AgendaLu/animal-an-erp.git"
+
+[project.scripts]
+animal-an-web = "web.app:main"
+animal-an-backup = "utils.backup:main"
+
+[tool.setuptools]
+packages = ["models", "viewmodels", "views", "web", "utils", "scripts", "config"]
+
+[tool.setuptools.package-data]
+web = ["static/**/*"]
+
+[tool.black]
+line-length = 100
+target-version = ['py39']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.isort]
+profile = "black"
+line_length = 100

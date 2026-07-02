@@ -11,6 +11,12 @@ logs/
 
 # Database backups
 data/*_pre_v*.db
+data/*_backup_*.db
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
 
 # macOS
 .DS_Store
