@@ -183,6 +183,7 @@ class CSVImporter:
                     email=row.get('email', ''),
                     address=row.get('address', ''),
                     credit_term_days=int(self._parse_float(row.get('credit_term_days', '0'))),
+                    credit_limit=self._parse_float(row.get('credit_limit', '0')),
                     is_active=self._parse_bool(row.get('is_active', 'true'))
                 )
                 self.session.add(customer)
@@ -227,6 +228,8 @@ class CSVImporter:
                     spec=row.get('spec', ''),
                     manufacturer=row.get('manufacturer', ''),
                     description=row.get('description', ''),
+                    reorder_point=self._parse_float(row.get('reorder_point', '0')),
+                    shelf_life_months=int(self._parse_float(row.get('shelf_life_months', '0'))),
                     is_active=self._parse_bool(row.get('is_active', 'true'))
                 )
                 self.session.add(product)
