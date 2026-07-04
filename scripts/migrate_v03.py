@@ -5,7 +5,8 @@ if present). All additions are nullable / defaulted, so legacy rows keep loading
 Creates a timestamped backup of each db file before touching it.
 
 Usage:
-    python scripts/migrate_v03.py
+    python scripts/migrate_v03.py                 # migrate data/animal_an.db + data/inventory.db
+    python scripts/migrate_v03.py PATH [PATH...]  # migrate the given database file(s)
 """
 import shutil
 import sqlite3
@@ -146,12 +147,21 @@ def migrate(db_path: Path) -> None:
         conn.close()
 
 
-def main() -> int:
-    found = [p for p in DB_CANDIDATES if p.exists()]
-    if not found:
-        print("No database file found; new tables will be created on next app start.")
-        return 0
-    for db in found:
+def main(argv=None) -> int:
+    args = sys.argv[1:] if argv is None else list(argv)
+    if args:
+        targets = [Path(a) for a in args]
+        missing = [p for p in targets if not p.exists()]
+        if missing:
+            for p in missing:
+                print(f"[error] database not found: {p}")
+            return 1
+    else:
+        targets = [p for p in DB_CANDIDATES if p.exists()]
+        if not targets:
+            print("No database file found; new tables will be created on next app start.")
+            return 0
+    for db in targets:
         migrate(db)
     return 0
 

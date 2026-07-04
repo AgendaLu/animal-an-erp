@@ -4,7 +4,6 @@ from pathlib import Path
 import logging
 from typing import Optional
 from contextlib import contextmanager
-import sys
 
 from .base import Base
 
@@ -44,28 +43,14 @@ class DatabaseManager:
             return False
 
     def _run_migrations(self) -> bool:
-        """Run any pending database migrations"""
+        """Run any pending database migrations on self.db_path"""
         try:
-            from pathlib import Path
-            migration_script = Path(__file__).parent.parent / 'scripts' / 'migrate_v03.py'
+            from scripts.migrate_v03 import migrate
 
-            if migration_script.exists():
-                logger.info(f"Running migration script: {migration_script}")
-                import subprocess
-                result = subprocess.run(
-                    [sys.executable, str(migration_script)],
-                    capture_output=True,
-                    text=True
-                )
-                if result.returncode == 0:
-                    logger.info("Migration completed successfully")
-                    return True
-                else:
-                    logger.error(f"Migration failed: {result.stderr}")
-                    return False
-            else:
-                logger.info("No migration script found, skipping")
-                return True
+            logger.info(f"Running v0.3 migration on {self.db_path}")
+            migrate(self.db_path)
+            logger.info("Migration completed successfully")
+            return True
         except Exception as e:
             logger.error(f"Migration error: {e}")
             return False

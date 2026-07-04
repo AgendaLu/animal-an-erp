@@ -84,6 +84,88 @@ class TestDatabaseInitialization:
                 assert count >= 0
 
 
+class TestAutoMigrationOnInit:
+    """Auto-migration during init_db must act on the db_path passed in,
+    never on the real data/ directory (regression: _run_migrations used to
+    invoke migrate_v03.py without arguments, which only migrates data/*.db)
+    """
+
+    LEGACY_DDL = [
+        # pre-v0.3 schema: no sales_invoices table, no v0.3 columns
+        "CREATE TABLE materials (id INTEGER PRIMARY KEY, code VARCHAR(50), "
+        "name VARCHAR(100), unit VARCHAR(20))",
+        "CREATE TABLE customers (id INTEGER PRIMARY KEY, code VARCHAR(20), "
+        "name VARCHAR(100), customer_type VARCHAR(50))",
+    ]
+
+    def make_legacy_db(self, path):
+        import sqlite3
+        conn = sqlite3.connect(path)
+        for ddl in self.LEGACY_DDL:
+            conn.execute(ddl)
+        conn.execute(
+            "INSERT INTO customers (code, name, customer_type) "
+            "VALUES ('C1', 'Legacy Customer', 'Veterinary')"
+        )
+        conn.commit()
+        conn.close()
+
+    def columns(self, db_path, table):
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        try:
+            return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        finally:
+            conn.close()
+
+    def test_init_migrates_the_given_legacy_db(self):
+        """init_db on a legacy DB migrates that file in place"""
+        import sqlite3
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "legacy.db"
+            self.make_legacy_db(db_path)
+            assert "product_type" not in self.columns(db_path, "materials")
+
+            db_manager = DatabaseManager()
+            db_manager.init_db(str(db_path))
+
+            # v0.3 columns added to the file we passed in
+            assert "product_type" in self.columns(db_path, "materials")
+            assert "current_balance" in self.columns(db_path, "customers")
+
+            # legacy customer_type value mapped to the new enum name
+            conn = sqlite3.connect(db_path)
+            (customer_type,) = conn.execute(
+                "SELECT customer_type FROM customers WHERE code='C1'"
+            ).fetchone()
+            conn.close()
+            assert customer_type == "VET_CLINIC"
+
+            # migration backup created next to the target db, not in data/
+            assert list(Path(tmpdir).glob("legacy_pre_v03_*.db"))
+
+            # missing v0.3 tables created afterwards by create_all
+            from sqlalchemy import inspect
+            assert "sales_invoices" in inspect(db_manager.engine).get_table_names()
+
+    def test_init_on_legacy_db_leaves_data_dir_untouched(self):
+        """Migrating a legacy DB elsewhere must not modify or back up data/*"""
+        data_dir = Path(__file__).resolve().parent.parent / "data"
+
+        def snapshot():
+            if not data_dir.exists():
+                return {}
+            return {p.name: p.stat().st_mtime_ns for p in data_dir.iterdir()}
+
+        before = snapshot()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "legacy.db"
+            self.make_legacy_db(db_path)
+            DatabaseManager().init_db(str(db_path))
+        assert snapshot() == before
+
+
 class TestDatabaseBackup:
     """Test backup and restore functionality"""
 
