@@ -28,6 +28,7 @@ from models.enums import (
 )
 from viewmodels.inventory_vm import InventoryViewModel
 from viewmodels.accounting_vm import AccountingViewModel
+from viewmodels.report_vm import ReportViewModel
 
 app = FastAPI(title="Animal-AN ERP", docs_url="/api/docs")
 
@@ -522,6 +523,65 @@ def payables(outstanding_only: bool = True):
 
 
 # ------------------------------------------------------------------ #
+# Reports — 規格書 §6 M5 報表 + 信用告警 (ReportViewModel)
+# ------------------------------------------------------------------ #
+def _parse_report_date(value: str, name: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(400, f"{name} 日期格式錯誤,應為 YYYY-MM-DD: {value}")
+
+
+@app.get("/api/reports/monthly-inventory")
+def monthly_inventory_report(period: str):
+    s = db_manager.get_session()
+    try:
+        return ReportViewModel(s).monthly_inventory_report(period)
+    except ValueError:
+        raise HTTPException(400, f"period 格式錯誤,應為 YYYY-MM: {period}")
+    finally:
+        s.close()
+
+
+@app.get("/api/reports/stock-snapshot")
+def stock_snapshot_report(expiry_days: int = 90):
+    s = db_manager.get_session()
+    try:
+        return ReportViewModel(s).stock_snapshot(expiry_days=expiry_days)
+    finally:
+        s.close()
+
+
+@app.get("/api/reports/sales-profit")
+def sales_profit_report(start: str, end: str):
+    s = db_manager.get_session()
+    try:
+        return ReportViewModel(s).sales_profit_report(
+            _parse_report_date(start, "start"), _parse_report_date(end, "end"))
+    finally:
+        s.close()
+
+
+@app.get("/api/reports/repack-output")
+def repack_output_report(start: str, end: str):
+    s = db_manager.get_session()
+    try:
+        return ReportViewModel(s).repack_output_report(
+            _parse_report_date(start, "start"), _parse_report_date(end, "end"))
+    finally:
+        s.close()
+
+
+@app.get("/api/reports/credit-alerts")
+def credit_alerts_report(over_only: bool = False):
+    s = db_manager.get_session()
+    try:
+        return ReportViewModel(s).credit_alerts(over_only=over_only)
+    finally:
+        s.close()
+
+
+# ------------------------------------------------------------------ #
 # Generic CRUD routes — registered last so specific /api/* paths win
 # ------------------------------------------------------------------ #
 @app.get("/api/{entity}")
@@ -969,6 +1029,200 @@ async function renderDashboard(){
       :'<tr><td class="empty" colspan="6">（無資料）</td></tr>'}</tbody></table>`;
 }
 
+// ------------------------- 報表 -------------------------
+const csvExport = (filename, headers, rows) => {
+  const cell = c => '"' + String(c==null?'':c).replace(/"/g,'""') + '"';
+  const csv = [headers, ...rows].map(r=>r.map(cell).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'}));
+  a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+};
+const rptTable = (headers, rows, foot) =>
+  `<table><thead><tr>${headers.map(h=>'<th>'+h+'</th>').join('')}</tr></thead><tbody>` +
+  (rows.length ? rows.map(r=>`<tr${r.cls?' class="'+r.cls+'"':''}>`+r.cells.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')
+   : `<tr><td class="empty" colspan="${headers.length}">（無資料）</td></tr>`) +
+  '</tbody>' + (foot ? `<tfoot><tr>${foot.map(c=>'<th>'+c+'</th>').join('')}</tr></tfoot>` : '') + '</table>';
+
+const RPT_TABS = [
+  ['monthly','進銷存月報'], ['snapshot','庫存即時表'], ['profit','銷售毛利'],
+  ['repack','分裝產出'], ['ar','應收／信用'], ['ap','應付帳款'],
+  ['tax','稅務彙總'], ['dailysales','日銷售'],
+];
+
+async function renderReports(tab){
+  tab = tab || 'monthly';
+  const today = new Date().toISOString().slice(0,10);
+  const ym = today.slice(0,7);
+  main.innerHTML = `
+    <h2>報表</h2>
+    <div class="form-card">
+      <nav>${RPT_TABS.map(([k,l])=>`<button class="${k===tab?'active':''}" data-rpt="${k}">${l}</button>`).join('')}</nav>
+      <div class="actions" id="rptCtl"></div>
+    </div>
+    <div id="rptBody"></div>`;
+  document.querySelectorAll('[data-rpt]').forEach(b=>{ b.onclick = ()=>renderReports(b.dataset.rpt); });
+  const ctl = document.getElementById('rptCtl');
+  const body = document.getElementById('rptBody');
+  let exportData = null;
+
+  const addExport = name => {
+    const b = document.createElement('button');
+    b.className = 'btn gray'; b.type = 'button'; b.textContent = '匯出 CSV';
+    b.onclick = () => { if(exportData) csvExport(name+'.csv', exportData[0], exportData[1]); };
+    ctl.appendChild(b);
+  };
+  const addBtn = (label, fn, cls) => {
+    const b = document.createElement('button');
+    b.className = cls||'btn'; b.type = 'button'; b.textContent = label;
+    b.onclick = fn; ctl.appendChild(b); return b;
+  };
+  const addInput = (label, type, value, id) => {
+    const w = document.createElement('div');
+    w.style.minWidth = '160px';
+    w.innerHTML = `<label>${label}</label><input type="${type}" id="${id}" value="${value}">`;
+    ctl.appendChild(w); return () => document.getElementById(id).value;
+  };
+
+  if(tab === 'monthly'){
+    const getP = addInput('月份','month',ym,'rptP');
+    const load = async () => {
+      const d = await api.get('reports/monthly-inventory?period='+getP());
+      if(d.detail){ body.innerHTML = `<p class="msg err">${esc(d.detail)}</p>`; return; }
+      const H = ['SKU','品名','規格','期初量','期初金額','本期進','進金額','本期銷','銷金額','調整','期末量','期末金額'];
+      body.innerHTML = rptTable(H, d.rows.map(r=>({cells:[
+        esc(r.product_code), esc(r.product_name), esc(r.spec),
+        r.open_qty, fmt(r.open_amount), r.in_qty, fmt(r.in_amount),
+        r.out_qty, fmt(r.out_amount), r.adjust_qty, r.closing_qty, fmt(r.closing_amount)]})),
+        ['合計','','','',fmt(d.totals.open_amount),'',fmt(d.totals.in_amount),'',
+         fmt(d.totals.out_amount),'','',fmt(d.totals.closing_amount)]);
+      exportData = [H, d.rows.map(r=>[r.product_code,r.product_name,r.spec,r.open_qty,r.open_amount,
+        r.in_qty,r.in_amount,r.out_qty,r.out_amount,r.adjust_qty,r.closing_qty,r.closing_amount])];
+    };
+    addBtn('查詢', load); addExport('進銷存月報'); load();
+
+  } else if(tab === 'snapshot'){
+    const H = ['SKU','品名','規格','現量','批號數','庫存金額','近效期批號','再訂購點','狀態'];
+    const rows = await api.get('reports/stock-snapshot');
+    body.innerHTML = rptTable(H, rows.map(r=>({
+      cls: r.below_reorder ? 'warn' : '',
+      cells: [esc(r.product_code), esc(r.product_name), esc(r.spec), r.quantity,
+        r.batch_count, fmt(r.stock_value), esc(r.near_expiry_batches.join(' / ')),
+        r.reorder_point, r.below_reorder ? '⚠ 低於再訂購點' : '']})));
+    exportData = [H, rows.map(r=>[r.product_code,r.product_name,r.spec,r.quantity,r.batch_count,
+      r.stock_value,r.near_expiry_batches.join(' / '),r.reorder_point,r.below_reorder?'低於再訂購點':''])];
+    addExport('庫存即時表');
+
+  } else if(tab === 'profit'){
+    const getS = addInput('起日','date',ym+'-01','rptS');
+    const getE = addInput('迄日','date',today,'rptE');
+    const load = async () => {
+      const d = await api.get(`reports/sales-profit?start=${getS()}&end=${getE()}`);
+      if(d.detail){ body.innerHTML = `<p class="msg err">${esc(d.detail)}</p>`; return; }
+      const H = ['客戶','客戶名稱','SKU','品名','銷量','收入','成本','毛利','毛利率%'];
+      body.innerHTML = rptTable(H, d.rows.map(r=>({cells:[
+        esc(r.customer_code), esc(r.customer_name), esc(r.product_code), esc(r.product_name),
+        r.quantity, fmt(r.revenue), fmt(r.cost), fmt(r.gross_profit), r.margin_pct]})),
+        ['合計','','','',d.totals.quantity,fmt(d.totals.revenue),fmt(d.totals.cost),
+         fmt(d.totals.gross_profit),d.totals.margin_pct]);
+      exportData = [H, d.rows.map(r=>[r.customer_code,r.customer_name,r.product_code,r.product_name,
+        r.quantity,r.revenue,r.cost,r.gross_profit,r.margin_pct])];
+    };
+    addBtn('查詢', load); addExport('銷售毛利'); load();
+
+  } else if(tab === 'repack'){
+    const getS = addInput('起日','date',ym+'-01','rptS');
+    const getE = addInput('迄日','date',today,'rptE');
+    const load = async () => {
+      const rows = await api.get(`reports/repack-output?start=${getS()}&end=${getE()}`);
+      if(rows.detail){ body.innerHTML = `<p class="msg err">${esc(rows.detail)}</p>`; return; }
+      const H = ['日期','分裝單號','原裝料號','原裝批號','耗用','預期產出','實際產出','差異','產出批號','原裝成本','產出成本','操作人'];
+      body.innerHTML = rptTable(H, rows.map(r=>({
+        cls: r.variance ? 'warn' : '',
+        cells: [r.repack_date, esc(r.repack_number), esc(r.bulk_code), esc(r.bulk_batch_number),
+          r.bulk_qty_consumed, r.expected_output, r.output_qty, r.variance,
+          esc(r.output_batch_number), fmt(r.bulk_cost), fmt(r.output_value), esc(r.operator)]})));
+      exportData = [H, rows.map(r=>[r.repack_date,r.repack_number,r.bulk_code,r.bulk_batch_number,
+        r.bulk_qty_consumed,r.expected_output,r.output_qty,r.variance,r.output_batch_number,
+        r.bulk_cost,r.output_value,r.operator])];
+    };
+    addBtn('查詢', load); addExport('分裝產出'); load();
+
+  } else if(tab === 'ar'){
+    const [alerts, ars] = await Promise.all([
+      api.get('reports/credit-alerts'), api.get('accounting/receivables')]);
+    const H1 = ['客戶','客戶名稱','信用額度','應收餘額','可用額度','狀態'];
+    const H2 = ['客戶','發票號碼','原始金額','已收','未收','到期日','逾期天數','狀態'];
+    body.innerHTML = '<h2>信用控管</h2>' + rptTable(H1, alerts.map(r=>({
+        cls: r.over_limit ? 'warn' : '',
+        cells: [esc(r.customer_code), esc(r.customer_name), fmt(r.credit_limit),
+          fmt(r.outstanding), r.available==null?'—':fmt(r.available),
+          r.over_limit ? '⚠ 超過信用額度' : 'OK']}))) +
+      '<h2>未結應收帳款</h2>' + rptTable(H2, ars.map(r=>({
+        cls: r.overdue_status==='OVERDUE' ? 'warn' : '',
+        cells: [esc(r.customer_code), esc(r.invoice_number), fmt(r.original_amount),
+          fmt(r.paid_amount), fmt(r.outstanding_amount), r.due_date,
+          r.days_overdue, r.overdue_status==='OVERDUE'?'逾期':'未到期']})));
+    exportData = [H2, ars.map(r=>[r.customer_code,r.invoice_number,r.original_amount,
+      r.paid_amount,r.outstanding_amount,r.due_date,r.days_overdue,r.overdue_status])];
+    addExport('應收帳款');
+
+  } else if(tab === 'ap'){
+    const aps = await api.get('accounting/payables');
+    const H = ['供應商','發票號碼','原始金額','已付','未付','到期日','逾期天數','狀態'];
+    body.innerHTML = rptTable(H, aps.map(r=>({
+      cls: r.overdue_status==='OVERDUE' ? 'warn' : '',
+      cells: [esc(r.supplier_code), esc(r.invoice_number), fmt(r.original_amount),
+        fmt(r.paid_amount), fmt(r.outstanding_amount), r.due_date,
+        r.days_overdue, r.overdue_status==='OVERDUE'?'逾期':'未到期']})));
+    exportData = [H, aps.map(r=>[r.supplier_code,r.invoice_number,r.original_amount,
+      r.paid_amount,r.outstanding_amount,r.due_date,r.days_overdue,r.overdue_status])];
+    addExport('應付帳款');
+
+  } else if(tab === 'tax'){
+    const getP = addInput('期別','month',ym,'rptP');
+    const msg = document.createElement('span'); msg.className = 'msg';
+    const show = d => {
+      body.innerHTML = `<div class="cards">
+        <div class="card"><div class="label">銷項稅（${d.sales_invoice_count} 張發票）</div><div class="value">${fmt(d.total_sales_tax)}</div></div>
+        <div class="card"><div class="label">進項稅（${d.purchase_invoice_count} 張發票）</div><div class="value">${fmt(d.total_purchase_tax)}</div></div>
+        <div class="card"><div class="label">應納稅額（銷項 − 進項）</div><div class="value">${fmt(d.net_tax_payable)}</div></div>
+      </div>` + rptTable(['項目','金額'], [
+        {cells:['銷售額（未稅）', fmt(d.total_sales_amount)]},
+        {cells:['銷項稅', fmt(d.total_sales_tax)]},
+        {cells:['進貨額（未稅）', fmt(d.total_purchase_amount)]},
+        {cells:['進項稅', fmt(d.total_purchase_tax)]},
+        {cells:['應納稅額', fmt(d.net_tax_payable)]}]);
+    };
+    const load = async save => {
+      const d = await api.get(`accounting/reports/tax?period=${getP()}${save?'&save=true':''}`);
+      if(d.detail){ msg.className='msg err'; msg.textContent = d.detail; return; }
+      msg.className='msg ok'; msg.textContent = save ? '已存為申報草稿' : '';
+      show(d);
+    };
+    addBtn('查詢', ()=>load(false));
+    addBtn('存為申報草稿', ()=>load(true), 'btn gray');
+    ctl.appendChild(msg);
+    load(false);
+
+  } else if(tab === 'dailysales'){
+    const getD = addInput('日期','date',today,'rptD');
+    const load = async () => {
+      const d = await api.get('accounting/reports/daily-sales?report_date='+getD());
+      if(d.detail){ body.innerHTML = `<p class="msg err">${esc(d.detail)}</p>`; return; }
+      const H = ['發票號碼','客戶','客戶名稱','品項數','未稅','稅額','含稅','毛利','付款狀態'];
+      body.innerHTML = rptTable(H, d.rows.map(r=>({cells:[
+        esc(r.invoice_number), esc(r.customer_code), esc(r.customer_name), r.item_count,
+        fmt(r.total_pretax), fmt(r.total_tax), fmt(r.total_withtax), fmt(r.gross_profit),
+        r.payment_status]})),
+        [`合計 ${d.totals.invoice_count} 張`,'','','',fmt(d.totals.total_pretax),
+         fmt(d.totals.total_tax),fmt(d.totals.total_withtax),fmt(d.totals.gross_profit),'']);
+      exportData = [H, d.rows.map(r=>[r.invoice_number,r.customer_code,r.customer_name,r.item_count,
+        r.total_pretax,r.total_tax,r.total_withtax,r.gross_profit,r.payment_status])];
+    };
+    addBtn('查詢', load); addExport('日銷售報表'); load();
+  }
+}
+
 // ------------------------- nav -------------------------
 const PAGES = [
   ['dashboard','儀表板',renderDashboard],
@@ -979,6 +1233,7 @@ const PAGES = [
   ['sales','建立銷貨單',renderSales],
   ['suppliers','供應商',()=>renderCrud(CONFIGS['suppliers'])],
   ['customers','客戶',()=>renderCrud(CONFIGS['customers'])],
+  ['reports','報表',()=>renderReports()],
 ];
 const nav = document.getElementById('nav');
 const main = document.getElementById('main');
