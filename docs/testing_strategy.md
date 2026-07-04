@@ -28,9 +28,9 @@
 
 | 端點群 | 案例 |
 |---|---|
-| 會計發票 POST | 成功(ISO 日期字串解析、回傳合計)、空明細 400、重複發票號(目前 500,期望 4xx → xfail 記錄) |
-| 收付款 POST | 部分→全額核銷後 receivables 反映、超額 400、缺 amount 400、發票不存在 400 |
-| 報表 GET | daily-sales 合計、tax save=true upsert、已申報(FILED)後 save 400、無效日期(目前 500 → xfail) |
+| 會計發票 POST | 成功(ISO 日期字串解析、回傳合計)、空明細 400、重複發票號 400、header 未知欄位 400 |
+| 收付款 POST | 部分→全額核銷後 receivables 反映、超額 400、缺 amount 400、發票不存在 400、重複付款單號 400 |
+| 報表 GET | daily-sales 合計、tax save=true upsert、已申報(FILED)後 save 400、無效日期 400、無效 period 400 |
 | AR/AP GET | outstanding_only 切換 |
 | 通用 CRUD | 建立/清單/更新、缺 code/name 400、未知 entity 404、不存在 id 404、enum 序列化往返 |
 | 進銷存流程 | 供應商→原物料→進貨單(收貨入庫)→分裝→銷貨(FEFO)→估值/低庫存/近效期;單號序列 PO/SO-001、002;缺欄位 400、超發 400、負庫存調整 400 |
@@ -60,7 +60,7 @@
 ## 已知風險(測試過程盤點)
 1. **金額用 Float**:accounting_database_design 已標註;長期應改 `Numeric(12,2)`/整數分 — 待修
 2. ~~`DatabaseManager._run_migrations` 路徑寫死~~ — **已修**(改為 in-process `migrate(self.db_path)`,分支 claude/awesome-diffie-ed9577,含回歸測試)
-3. **API 錯誤處理缺口**(重複發票號/無效日期/未知欄位 → 500):應皆回 4xx — 待修
+3. ~~API 錯誤處理缺口(重複發票號/無效日期/未知欄位 → 500)~~ — **已修**(2026-07-04,統一回 400;對應測試已轉正)
 4. **CSV `_parse_float` 把逗號當小數點**:`1,234.56`(千分位)會解析失敗回 0.0,台灣報表常見格式,匯入金額歸零風險 — 待修
 
 ## 2026-07-04 增補(報表與打包)

@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import IntegrityError
 
 from models import db_manager
 from models.inventory import BulkItem, BulkBatch, InventoryTransaction, RepackOrder
@@ -451,9 +452,12 @@ def create_sales_invoice(payload: dict = Body(...)):
         s.commit()
         return {"id": inv.id, "invoice_number": inv.invoice_number,
                 "total_amount_with_tax": inv.total_amount_with_tax}
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         s.rollback()
         raise HTTPException(400, str(e))
+    except IntegrityError as e:
+        s.rollback()
+        raise HTTPException(400, f"資料重複或違反完整性限制: {e.orig}")
     finally:
         s.close()
 
@@ -471,9 +475,12 @@ def create_purchase_invoice(payload: dict = Body(...)):
         s.commit()
         return {"id": inv.id, "invoice_number": inv.invoice_number,
                 "total_amount_with_tax": inv.total_amount_with_tax}
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         s.rollback()
         raise HTTPException(400, str(e))
+    except IntegrityError as e:
+        s.rollback()
+        raise HTTPException(400, f"資料重複或違反完整性限制: {e.orig}")
     finally:
         s.close()
 
@@ -488,9 +495,12 @@ def record_payment(payload: dict = Body(...)):
         s.commit()
         return {"id": rec.id, "payment_number": rec.payment_number,
                 "amount": rec.amount}
-    except (ValueError, KeyError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         s.rollback()
         raise HTTPException(400, str(e))
+    except IntegrityError as e:
+        s.rollback()
+        raise HTTPException(400, f"資料重複或違反完整性限制: {e.orig}")
     finally:
         s.close()
 
@@ -499,7 +509,8 @@ def record_payment(payload: dict = Body(...)):
 def daily_sales_report(report_date: str):
     s = db_manager.get_session()
     try:
-        return AccountingViewModel(s).daily_sales_report(date.fromisoformat(report_date))
+        return AccountingViewModel(s).daily_sales_report(
+            _parse_report_date(report_date, "report_date"))
     finally:
         s.close()
 

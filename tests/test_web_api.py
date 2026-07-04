@@ -127,13 +127,19 @@ class TestAccountingInvoiceAPI:
         assert r.status_code == 400
         assert "至少" in r.json()["detail"]
 
-    @pytest.mark.xfail(strict=False,
-                       reason="重複發票號目前回 500(IntegrityError 未攔),應為 4xx")
     def test_duplicate_invoice_number_client_error(self, client):
         post_sales_invoice(client)
         r = client.post("/api/accounting/sales-invoices",
                         json={"header": SALES_HEADER, "lines": [SALES_LINE]})
         assert r.status_code == 400
+        assert "重複" in r.json()["detail"]
+
+    def test_unknown_header_field_client_error(self, client):
+        header = {**SALES_HEADER, "no_such_field": "x"}
+        r = client.post("/api/accounting/sales-invoices",
+                        json={"header": header, "lines": [SALES_LINE]})
+        assert r.status_code == 400
+        assert "no_such_field" in r.json()["detail"]
 
 
 # ------------------------------------------------------------------ 收付款
@@ -188,6 +194,17 @@ class TestPaymentAPI:
         assert r.status_code == 400
         assert "找不到" in r.json()["detail"]
 
+    def test_duplicate_payment_number_client_error(self, client):
+        inv = post_sales_invoice(client)
+        pay = dict(payment_number="PAY-0007",
+                   payment_type="RECEIPT_FROM_CUSTOMER",
+                   reference_id=inv["id"], amount=100)
+        r = client.post("/api/accounting/payments", json=pay)
+        assert r.status_code == 200, r.text
+        r = client.post("/api/accounting/payments", json=pay)
+        assert r.status_code == 400
+        assert "重複" in r.json()["detail"]
+
 
 # ------------------------------------------------------------------ 報表
 
@@ -223,10 +240,13 @@ class TestReportAPI:
         r = client.get("/api/accounting/reports/tax?period=2026-06")
         assert r.status_code == 200
 
-    @pytest.mark.xfail(strict=False,
-                       reason="無效日期參數目前回 500(ValueError 未攔),應為 4xx")
     def test_invalid_report_date_client_error(self, client):
         r = client.get("/api/accounting/reports/daily-sales?report_date=garbage")
+        assert r.status_code == 400
+        assert "YYYY-MM-DD" in r.json()["detail"]
+
+    def test_invalid_tax_period_client_error(self, client):
+        r = client.get("/api/accounting/reports/tax?period=garbage")
         assert r.status_code == 400
 
 
