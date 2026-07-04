@@ -57,8 +57,14 @@
 2. **絕不**讓測試觸碰 `data/animal_an.db`:API 測試一律 monkeypatch `DB_PATH`;不在既有舊 DB 上呼叫 `init_db`(會觸發 subprocess migration 打到正式資料目錄 — 見下方已知風險 #2)
 3. 已發現但不在本次修的 bug:以 `xfail(strict=False)` 釘住期望行為,修好後轉 XPASS 可見
 
-## 已知風險(測試過程盤點,待修)
-1. **金額用 Float**:accounting_database_design 已標註;長期應改 `Numeric(12,2)`/整數分
-2. **`DatabaseManager._run_migrations` 路徑寫死**:subprocess 執行 migrate_v03.py 不帶參數,永遠 migrate `data/` 下的正式 DB,而非 `init_db(db_path)` 指定的檔案 — 對任何缺 `sales_invoices` 表的舊 DB 初始化都會誤觸正式資料
-3. **API 錯誤處理缺口**:重複發票號 → IntegrityError 500;無效日期查詢參數 → ValueError 500;header 含未知欄位 → TypeError 500。皆應為 4xx
-4. **CSV `_parse_float` 把逗號當小數點**:`1,234.56`(千分位)會解析失敗回 0.0,台灣報表常見格式,匯入金額歸零風險
+## 已知風險(測試過程盤點)
+1. **金額用 Float**:accounting_database_design 已標註;長期應改 `Numeric(12,2)`/整數分 — 待修
+2. ~~`DatabaseManager._run_migrations` 路徑寫死~~ — **已修**(改為 in-process `migrate(self.db_path)`,分支 claude/awesome-diffie-ed9577,含回歸測試)
+3. **API 錯誤處理缺口**(重複發票號/無效日期/未知欄位 → 500):應皆回 4xx — 待修
+4. **CSV `_parse_float` 把逗號當小數點**:`1,234.56`(千分位)會解析失敗回 0.0,台灣報表常見格式,匯入金額歸零風險 — 待修
+
+## 2026-07-04 增補(報表與打包)
+- **tests/test_reports.py**:ReportViewModel 單元(月報分桶/快照告警/毛利分組/分裝守恆/信用超額)+ /api/reports/* 整合與 400 驗證
+- **tests/conftest.py**:client fixture 共用(暫存 DB 隔離)
+- **DB 路徑決議測試**:env 覆寫 / frozen 執行檔同層 / 開發預設三分支
+- 打包驗收:PyInstaller onedir 建置後,實測啟動、HTTP 200、DB 落點、防重複啟動

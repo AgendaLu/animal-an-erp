@@ -53,6 +53,7 @@ dev = [
     "black>=22.0",
     "flake8>=4.0",
     "mypy>=0.990",
+    "pyinstaller>=6.0",
 ]
 
 docker = [
@@ -67,6 +68,7 @@ Repository = "https://github.com/AgendaLu/animal-an-erp.git"
 
 [project.scripts]
 animal-an-web = "web.app:main"
+animal-an-desktop = "web.desktop:main"
 animal-an-backup = "utils.backup:main"
 
 [tool.setuptools]

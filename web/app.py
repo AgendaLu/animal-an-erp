@@ -7,6 +7,7 @@ Run:
     .venv/bin/python -m web.app
 then open http://127.0.0.1:8000
 """
+import os
 import sys
 from datetime import datetime, date
 from pathlib import Path
@@ -35,7 +36,20 @@ app = FastAPI(title="Animal-AN ERP", docs_url="/api/docs")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "animal_an.db"
+def _default_db_path() -> Path:
+    """DB 路徑決議:env 覆寫 > 打包後執行檔同層 data/ > 開發時專案 data/。
+
+    規格 §7:執行檔與 .db 分離,更新只換執行檔(data/ 不動)。
+    """
+    env = os.environ.get("ANIMAL_AN_DB")
+    if env:
+        return Path(env)
+    if getattr(sys, "frozen", False):  # PyInstaller
+        return Path(sys.executable).resolve().parent / "data" / "animal_an.db"
+    return Path(__file__).resolve().parent.parent / "data" / "animal_an.db"
+
+
+DB_PATH = _default_db_path()
 
 ENUMS = {
     'ProductType': ProductType, 'StorageType': StorageType,
@@ -46,6 +60,7 @@ ENUMS = {
 
 @app.on_event("startup")
 def startup() -> None:
+    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     db_manager.init_db(str(DB_PATH))
 
 

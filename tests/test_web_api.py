@@ -12,8 +12,29 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import web.app as webapp  # noqa: E402
 from models import db_manager  # noqa: E402
 from models.accounting import TaxRecord, FilingStatus  # noqa: E402
+
+
+class TestDbPathResolution:
+    """打包(frozen)與環境變數下的 DB 路徑決議 — 規格 §7 執行檔與 .db 分離。"""
+
+    def test_env_var_wins(self, monkeypatch):
+        monkeypatch.setenv("ANIMAL_AN_DB", "/somewhere/custom.db")
+        assert webapp._default_db_path() == Path("/somewhere/custom.db")
+
+    def test_frozen_uses_executable_dir(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("ANIMAL_AN_DB", raising=False)
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sys, "executable", str(tmp_path / "animal-an-erp"))
+        assert webapp._default_db_path() == tmp_path / "data" / "animal_an.db"
+
+    def test_dev_uses_project_data_dir(self, monkeypatch):
+        monkeypatch.delenv("ANIMAL_AN_DB", raising=False)
+        p = webapp._default_db_path()
+        assert p.name == "animal_an.db"
+        assert p.parent.name == "data"
 
 
 # ------------------------------------------------------------------ helpers
