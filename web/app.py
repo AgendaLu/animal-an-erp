@@ -28,6 +28,7 @@ from models.enums import (
     ProductType, StorageType, PackageType, OrderStatus, PaymentStatus,
     SupplierType, CustomerType,
 )
+from models.accounting import SalesInvoice, PurchaseInvoice, PaymentRecord
 from viewmodels.inventory_vm import InventoryViewModel
 from viewmodels.accounting_vm import AccountingViewModel
 from viewmodels.report_vm import ReportViewModel
@@ -439,6 +440,21 @@ def valuation():
 # ------------------------------------------------------------------ #
 # Accounting — invoices, payments, reports (AccountingViewModel)
 # ------------------------------------------------------------------ #
+_INVOICE_LINE_NUMERIC = ('quantity', 'unit_price', 'tax_rate', 'cost_per_unit')
+
+
+def _coerce_invoice_lines(lines):
+    """瀏覽器表單的數字常以字串送達，統一轉 float。"""
+    out = []
+    for ld in lines or []:
+        ld = dict(ld)
+        for k in _INVOICE_LINE_NUMERIC:
+            if isinstance(ld.get(k), str) and ld[k] != '':
+                ld[k] = float(ld[k])
+        out.append(ld)
+    return out
+
+
 @app.post("/api/accounting/sales-invoices")
 def create_sales_invoice(payload: dict = Body(...)):
     s = db_manager.get_session()
@@ -448,7 +464,7 @@ def create_sales_invoice(payload: dict = Body(...)):
             if isinstance(header.get(k), str):
                 header[k] = date.fromisoformat(header[k])
         inv = AccountingViewModel(s).create_sales_invoice(
-            header, payload.get('lines') or [])
+            header, _coerce_invoice_lines(payload.get('lines')))
         s.commit()
         return {"id": inv.id, "invoice_number": inv.invoice_number,
                 "total_amount_with_tax": inv.total_amount_with_tax}
@@ -471,7 +487,7 @@ def create_purchase_invoice(payload: dict = Body(...)):
             if isinstance(header.get(k), str):
                 header[k] = date.fromisoformat(header[k])
         inv = AccountingViewModel(s).create_purchase_invoice(
-            header, payload.get('lines') or [])
+            header, _coerce_invoice_lines(payload.get('lines')))
         s.commit()
         return {"id": inv.id, "invoice_number": inv.invoice_number,
                 "total_amount_with_tax": inv.total_amount_with_tax}
@@ -501,6 +517,65 @@ def record_payment(payload: dict = Body(...)):
     except IntegrityError as e:
         s.rollback()
         raise HTTPException(400, f"資料重複或違反完整性限制: {e.orig}")
+    finally:
+        s.close()
+
+
+@app.get("/api/accounting/sales-invoices")
+def list_sales_invoices():
+    s = db_manager.get_session()
+    try:
+        rows = []
+        for inv in s.query(SalesInvoice).order_by(SalesInvoice.id.desc()).limit(200):
+            rows.append({
+                'id': inv.id, 'invoice_number': inv.invoice_number,
+                'customer_code': inv.customer_code, 'customer_name': inv.customer_name,
+                'invoice_date': inv.invoice_date.isoformat()[:10],
+                'due_date': inv.due_date.isoformat()[:10],
+                'total_amount_with_tax': inv.total_amount_with_tax,
+                'payment_status': inv.payment_status.name,
+                'remaining_balance': inv.remaining_balance,
+            })
+        return rows
+    finally:
+        s.close()
+
+
+@app.get("/api/accounting/purchase-invoices")
+def list_purchase_invoices():
+    s = db_manager.get_session()
+    try:
+        rows = []
+        for inv in s.query(PurchaseInvoice).order_by(PurchaseInvoice.id.desc()).limit(200):
+            rows.append({
+                'id': inv.id, 'invoice_number': inv.invoice_number,
+                'supplier_code': inv.supplier_code, 'supplier_name': inv.supplier_name,
+                'invoice_date': inv.invoice_date.isoformat()[:10],
+                'due_date': inv.due_date.isoformat()[:10],
+                'total_amount_with_tax': inv.total_amount_with_tax,
+                'payment_status': inv.payment_status.name,
+                'remaining_balance': inv.remaining_balance,
+            })
+        return rows
+    finally:
+        s.close()
+
+
+@app.get("/api/accounting/payments")
+def list_payments():
+    s = db_manager.get_session()
+    try:
+        rows = []
+        for p in s.query(PaymentRecord).order_by(PaymentRecord.id.desc()).limit(200):
+            rows.append({
+                'id': p.id, 'payment_number': p.payment_number,
+                'payment_type': p.payment_type.name,
+                'transaction_date': p.transaction_date.isoformat()[:10],
+                'supplier_or_customer_name': p.supplier_or_customer_name,
+                'amount': p.amount, 'payment_method': p.payment_method,
+                'reference_id': p.reference_id,
+            })
+        return rows
     finally:
         s.close()
 
@@ -752,6 +827,30 @@ PAGE = r"""<!DOCTYPE html>
   .msg.ok { color:rgb(36,137,97); } .msg.err { color:hsl(var(--color-danger)); }
   .warn { color:hsl(var(--color-danger)); font-weight:var(--fw-semibold); }
   .empty { color:hsl(var(--text-muted)); padding:var(--space-3); }
+  /* 系統架構圖：右下角懸浮鈕 + tooltip + 全螢幕彈窗 */
+  #mapFab { position:fixed; right:20px; bottom:20px; z-index:50;
+    width:44px; height:44px; border-radius:50%; border:1px solid hsl(var(--border-default-darker));
+    background:hsl(var(--bg-card)); color:hsl(var(--text-muted)); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 2px 8px rgba(0,0,0,.14);
+    transition:color var(--duration-fast) var(--ease-in-out); }
+  #mapFab:hover { color:hsl(var(--color-primary)); }
+  #mapFab::after { content:attr(data-tip); position:absolute; right:0; bottom:52px;
+    background:hsl(var(--text-default)); color:#fff; font-size:var(--fs-xs);
+    padding:4px 10px; border-radius:var(--radius-md); white-space:nowrap;
+    opacity:0; pointer-events:none; transform:translateY(4px);
+    transition:opacity var(--duration-fast) var(--ease-in-out),
+               transform var(--duration-fast) var(--ease-in-out); }
+  #mapFab:hover::after, #mapFab:focus-visible::after { opacity:1; transform:translateY(0); }
+  #mapModal { position:fixed; inset:0; z-index:60; background:rgba(20,28,36,.45); }
+  #mapModal[hidden] { display:none; }
+  #mapModal .map-box { position:absolute; inset:3%; background:#EEF1EF;
+    border-radius:var(--radius-lg); overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,.3); }
+  #mapModal iframe { width:100%; height:100%; border:none; }
+  #mapClose { position:absolute; top:calc(3% + 10px); right:calc(3% + 10px); z-index:61;
+    width:32px; height:32px; border-radius:50%; border:1px solid hsl(var(--border-default-darker));
+    background:hsl(var(--bg-card)); cursor:pointer; font-size:15px; line-height:1;
+    color:hsl(var(--text-default)); box-shadow:0 1px 4px rgba(0,0,0,.18); }
 </style>
 </head>
 <body>
@@ -761,6 +860,17 @@ PAGE = r"""<!DOCTYPE html>
   <nav id="nav"></nav>
 </header>
 <main id="main"></main>
+<button id="mapFab" data-tip="系統架構圖" aria-label="系統架構圖">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z"/>
+    <path d="M9 4v13M15 6.5v13"/>
+  </svg>
+</button>
+<div id="mapModal" hidden>
+  <div class="map-box"><iframe data-src="/static/system_map.html" title="系統架構圖"></iframe></div>
+  <button id="mapClose" aria-label="關閉">✕</button>
+</div>
 <script>
 // ------------------------- helpers -------------------------
 const api = {
@@ -977,6 +1087,176 @@ async function renderSales(){
       soMsg.className='msg ok'; soMsg.textContent=r.message;
       setTimeout(renderSales, 800);
     }catch(err){ soMsg.className='msg err'; soMsg.textContent=err; }
+  };
+}
+
+// ------------------------- 銷售發票 -------------------------
+async function renderSalesInvoice(){
+  const [customers, products, invoices] = await Promise.all([
+    api.get('customers'), api.get('products'), api.get('accounting/sales-invoices')]);
+  const productOpts = products.map(p=>`<option value="${esc(p.code)}" data-name="${esc(p.name)}" data-unit="${esc(p.unit||'')}" data-price="${p.selling_price||''}">${esc(p.code)} ${esc(p.name)}</option>`).join('');
+  const lineRow = ()=>`<div class="grid" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;align-items:end" data-line>
+      <div><label>產品</label><select class="li-code">${productOpts||'<option value="">（請先建立產品）</option>'}</select></div>
+      <div><label>數量</label><input class="li-qty" type="number" step="any"></div>
+      <div><label>單位</label><input class="li-unit"></div>
+      <div><label>單價</label><input class="li-price" type="number" step="any"></div>
+      <div><label>稅率%</label><input class="li-tax" type="number" step="any" value="5"></div>
+      <button type="button" class="btn gray li-remove">刪除</button>
+    </div>`;
+  main.innerHTML = `
+    <h2>建立銷售發票</h2>
+    <div class="form-card"><form id="siForm"><div class="grid">
+      <div class="req"><label>客戶</label><select name="customer_code">
+        ${customers.map(c=>`<option value="${esc(c.code)}" data-name="${esc(c.name)}">${esc(c.code)} ${esc(c.name)}</option>`).join('')||'<option value="">（請先建立客戶）</option>'}</select></div>
+      <div class="req"><label>發票號碼</label><input name="invoice_number"></div>
+      <div class="req"><label>開立日期</label><input name="invoice_date" type="date"></div>
+      <div class="req"><label>到期日</label><input name="due_date" type="date"></div>
+      <div><label>備註</label><input name="notes"></div>
+    </div>
+    <h2 style="margin-top:var(--space-4)">明細</h2>
+    <div id="siLines">${lineRow()}</div>
+    <div class="actions"><button type="button" class="btn gray" id="siAddLine">+ 新增一列</button></div>
+    <div class="actions">
+      <button class="btn" type="submit">建立銷售發票</button><span class="msg" id="siMsg"></span>
+    </div></form></div>
+    <h2>銷售發票紀錄</h2>
+    <table><thead><tr><th>單號</th><th>客戶</th><th>開立日期</th><th>含稅金額</th><th>付款狀態</th><th>未結餘額</th></tr></thead>
+    <tbody>${invoices.length?invoices.map(i=>`<tr><td>${esc(i.invoice_number)}</td><td>${esc(i.customer_name)}</td><td>${i.invoice_date}</td><td>${fmt(i.total_amount_with_tax)}</td><td>${esc(i.payment_status)}</td><td>${fmt(i.remaining_balance)}</td></tr>`).join('')
+      :'<tr><td class="empty" colspan="6">（無資料）</td></tr>'}</tbody></table>`;
+  siLines.addEventListener('change', e=>{
+    if(e.target.classList.contains('li-code')){
+      const row = e.target.closest('[data-line]'); const o = e.target.selectedOptions[0];
+      if(o){ row.querySelector('.li-unit').value = o.dataset.unit||''; row.querySelector('.li-price').value = o.dataset.price||''; }
+    }
+  });
+  siLines.addEventListener('click', e=>{
+    if(e.target.classList.contains('li-remove')) e.target.closest('[data-line]').remove();
+  });
+  siAddLine.onclick = ()=>{ siLines.insertAdjacentHTML('beforeend', lineRow()); };
+  siForm.onsubmit = async e=>{
+    e.preventDefault();
+    const custOpt = siForm.customer_code.selectedOptions[0];
+    const header = {
+      customer_code: siForm.customer_code.value, customer_name: custOpt?custOpt.dataset.name:'',
+      invoice_number: siForm.invoice_number.value, invoice_date: siForm.invoice_date.value,
+      due_date: siForm.due_date.value, notes: siForm.notes.value||undefined,
+    };
+    const lines = [...siLines.querySelectorAll('[data-line]')].map(row=>{
+      const o = row.querySelector('.li-code').selectedOptions[0];
+      return { product_code: row.querySelector('.li-code').value, product_name: o?o.dataset.name:'',
+        quantity: +row.querySelector('.li-qty').value, unit: row.querySelector('.li-unit').value,
+        unit_price: +row.querySelector('.li-price').value, tax_rate: +row.querySelector('.li-tax').value||0 };
+    }).filter(l=>l.product_code && l.quantity);
+    try{ const r = await api.post('accounting/sales-invoices', {header, lines});
+      siMsg.className='msg ok'; siMsg.textContent=`發票 ${r.invoice_number} 已建立，含稅金額 ${fmt(r.total_amount_with_tax)}`;
+      setTimeout(renderSalesInvoice, 800);
+    }catch(err){ siMsg.className='msg err'; siMsg.textContent=err; }
+  };
+}
+
+// ------------------------- 採購發票 -------------------------
+async function renderPurchaseInvoice(){
+  const [suppliers, bulks, invoices] = await Promise.all([
+    api.get('suppliers'), api.get('bulk-items'), api.get('accounting/purchase-invoices')]);
+  const bulkOpts = bulks.map(b=>`<option value="${esc(b.code)}" data-name="${esc(b.name)}" data-unit="${esc(b.unit||'')}">${esc(b.code)} ${esc(b.name)}</option>`).join('');
+  const lineRow = ()=>`<div class="grid" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr auto;align-items:end" data-line>
+      <div><label>原物料</label><select class="li-code">${bulkOpts||'<option value="">（請先建立原物料）</option>'}</select></div>
+      <div class="req"><label>批號</label><input class="li-batch"></div>
+      <div><label>數量</label><input class="li-qty" type="number" step="any"></div>
+      <div><label>單位</label><input class="li-unit"></div>
+      <div><label>單價</label><input class="li-price" type="number" step="any"></div>
+      <div><label>稅率%</label><input class="li-tax" type="number" step="any" value="5"></div>
+      <button type="button" class="btn gray li-remove">刪除</button>
+    </div>`;
+  main.innerHTML = `
+    <h2>建立採購發票</h2>
+    <div class="form-card"><form id="piForm"><div class="grid">
+      <div class="req"><label>供應商</label><select name="supplier_code">
+        ${suppliers.map(s=>`<option value="${esc(s.code)}" data-name="${esc(s.name)}">${esc(s.code)} ${esc(s.name)}</option>`).join('')||'<option value="">（請先建立供應商）</option>'}</select></div>
+      <div class="req"><label>發票號碼</label><input name="invoice_number"></div>
+      <div class="req"><label>開立日期</label><input name="invoice_date" type="date"></div>
+      <div class="req"><label>到期日</label><input name="due_date" type="date"></div>
+    </div>
+    <h2 style="margin-top:var(--space-4)">明細</h2>
+    <div id="piLines">${lineRow()}</div>
+    <div class="actions"><button type="button" class="btn gray" id="piAddLine">+ 新增一列</button></div>
+    <div class="actions">
+      <button class="btn" type="submit">建立採購發票</button><span class="msg" id="piMsg"></span>
+    </div></form></div>
+    <h2>採購發票紀錄</h2>
+    <table><thead><tr><th>單號</th><th>供應商</th><th>開立日期</th><th>含稅金額</th><th>付款狀態</th><th>未結餘額</th></tr></thead>
+    <tbody>${invoices.length?invoices.map(i=>`<tr><td>${esc(i.invoice_number)}</td><td>${esc(i.supplier_name)}</td><td>${i.invoice_date}</td><td>${fmt(i.total_amount_with_tax)}</td><td>${esc(i.payment_status)}</td><td>${fmt(i.remaining_balance)}</td></tr>`).join('')
+      :'<tr><td class="empty" colspan="6">（無資料）</td></tr>'}</tbody></table>`;
+  piLines.addEventListener('change', e=>{
+    if(e.target.classList.contains('li-code')){
+      const row = e.target.closest('[data-line]'); const o = e.target.selectedOptions[0];
+      if(o){ row.querySelector('.li-unit').value = o.dataset.unit||''; }
+    }
+  });
+  piLines.addEventListener('click', e=>{
+    if(e.target.classList.contains('li-remove')) e.target.closest('[data-line]').remove();
+  });
+  piAddLine.onclick = ()=>{ piLines.insertAdjacentHTML('beforeend', lineRow()); };
+  piForm.onsubmit = async e=>{
+    e.preventDefault();
+    const supOpt = piForm.supplier_code.selectedOptions[0];
+    const header = {
+      supplier_code: piForm.supplier_code.value, supplier_name: supOpt?supOpt.dataset.name:'',
+      invoice_number: piForm.invoice_number.value, invoice_date: piForm.invoice_date.value,
+      due_date: piForm.due_date.value,
+    };
+    const lines = [...piLines.querySelectorAll('[data-line]')].map(row=>{
+      const o = row.querySelector('.li-code').selectedOptions[0];
+      return { bulk_item_code: row.querySelector('.li-code').value, bulk_item_name: o?o.dataset.name:'',
+        bulk_batch_number: row.querySelector('.li-batch').value,
+        quantity: +row.querySelector('.li-qty').value, unit: row.querySelector('.li-unit').value,
+        unit_price: +row.querySelector('.li-price').value, tax_rate: +row.querySelector('.li-tax').value||0 };
+    }).filter(l=>l.bulk_item_code && l.quantity);
+    try{ const r = await api.post('accounting/purchase-invoices', {header, lines});
+      piMsg.className='msg ok'; piMsg.textContent=`發票 ${r.invoice_number} 已建立，含稅金額 ${fmt(r.total_amount_with_tax)}`;
+      setTimeout(renderPurchaseInvoice, 800);
+    }catch(err){ piMsg.className='msg err'; piMsg.textContent=err; }
+  };
+}
+
+// ------------------------- 收付款 -------------------------
+async function renderPayment(){
+  const [salesInv, purchInv, payments] = await Promise.all([
+    api.get('accounting/sales-invoices'), api.get('accounting/purchase-invoices'), api.get('accounting/payments')]);
+  const unpaidSales = salesInv.filter(i=>i.remaining_balance>0);
+  const unpaidPurch = purchInv.filter(i=>i.remaining_balance>0);
+  const invOpts = type => (type==='RECEIPT_FROM_CUSTOMER'?unpaidSales:unpaidPurch)
+    .map(i=>`<option value="${i.id}" data-balance="${i.remaining_balance}">${esc(i.invoice_number)}（未結 ${fmt(i.remaining_balance)}）</option>`).join('');
+  main.innerHTML = `
+    <h2>建立收付款</h2>
+    <div class="form-card"><form id="payForm"><div class="grid">
+      <div class="req"><label>類型</label><select name="payment_type" id="payType">
+        <option value="RECEIPT_FROM_CUSTOMER">收款（客戶）</option>
+        <option value="PAYMENT_TO_SUPPLIER">付款（供應商）</option></select></div>
+      <div class="req"><label>發票</label><select name="reference_id" id="payInvoice">${invOpts('RECEIPT_FROM_CUSTOMER')||'<option value="">（無未結發票）</option>'}</select></div>
+      <div class="req"><label>付款單號</label><input name="payment_number"></div>
+      <div class="req"><label>金額</label><input name="amount" type="number" step="any" id="payAmount"></div>
+      <div><label>付款方式</label><select name="payment_method">
+        <option value="TRANSFER">轉帳</option><option value="CHECK">支票</option><option value="CASH">現金</option></select></div>
+      <div class="req"><label>交易日期</label><input name="transaction_date" type="date"></div>
+      <div><label>備註</label><input name="notes"></div>
+    </div><div class="actions">
+      <button class="btn" type="submit">建立收付款</button><span class="msg" id="payMsg"></span>
+    </div></form></div>
+    <h2>收付款紀錄</h2>
+    <table><thead><tr><th>單號</th><th>類型</th><th>日期</th><th>對象</th><th>金額</th><th>方式</th></tr></thead>
+    <tbody>${payments.length?payments.map(p=>`<tr><td>${esc(p.payment_number)}</td><td>${p.payment_type==='RECEIPT_FROM_CUSTOMER'?'收款':'付款'}</td><td>${p.transaction_date}</td><td>${esc(p.supplier_or_customer_name)}</td><td>${fmt(p.amount)}</td><td>${esc(p.payment_method)}</td></tr>`).join('')
+      :'<tr><td class="empty" colspan="6">（無資料）</td></tr>'}</tbody></table>`;
+  const syncAmount = ()=>{ const o = payInvoice.selectedOptions[0]; if(o) payAmount.value = o.dataset.balance||''; };
+  payType.onchange = ()=>{ payInvoice.innerHTML = invOpts(payType.value)||'<option value="">（無未結發票）</option>'; syncAmount(); };
+  payInvoice.onchange = syncAmount; syncAmount();
+  payForm.onsubmit = async e=>{
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(payForm).entries());
+    try{ const r = await api.post('accounting/payments', body);
+      payMsg.className='msg ok'; payMsg.textContent=`付款 ${r.payment_number} 已建立，金額 ${fmt(r.amount)}`;
+      setTimeout(renderPayment, 800);
+    }catch(err){ payMsg.className='msg err'; payMsg.textContent=err; }
   };
 }
 
@@ -1259,14 +1539,38 @@ const PAGES = [
   ['sales','建立銷貨單',renderSales],
   ['suppliers','供應商',()=>renderCrud(CONFIGS['suppliers'])],
   ['customers','客戶',()=>renderCrud(CONFIGS['customers'])],
+  ['sales-invoice','銷售發票',renderSalesInvoice],
+  ['purchase-invoice','採購發票',renderPurchaseInvoice],
+  ['payment','收付款',renderPayment],
   ['reports','報表',()=>renderReports()],
 ];
 const nav = document.getElementById('nav');
 const main = document.getElementById('main');
+let currentPage = 'dashboard';
+
+// ------------------------- 系統架構圖彈窗 -------------------------
+const mapModal = document.getElementById('mapModal');
+const mapFrame = mapModal.querySelector('iframe');
+const sendMapFocus = ()=>{
+  try{ mapFrame.contentWindow.postMessage({type:'focus', page: currentPage}, '*'); }catch(e){}
+};
+document.getElementById('mapFab').onclick = ()=>{
+  if(!mapFrame.src){
+    mapFrame.src = mapFrame.dataset.src;  // 首次開啟才載入
+    mapFrame.addEventListener('load', sendMapFocus, {once:true});
+  }else{
+    sendMapFocus();
+  }
+  mapModal.hidden = false;
+};
+document.getElementById('mapClose').onclick = ()=>{ mapModal.hidden = true; };
+mapModal.addEventListener('click', e=>{ if(e.target===mapModal) mapModal.hidden = true; });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') mapModal.hidden = true; });
 PAGES.forEach(([key,label,fn],i)=>{
   const b = document.createElement('button');
   b.textContent = label;
-  b.onclick = ()=>{ document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+  b.onclick = ()=>{ currentPage = key;
+                    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
                     b.classList.add('active'); fn(); };
   if(i===0) b.classList.add('active');
   nav.appendChild(b);
