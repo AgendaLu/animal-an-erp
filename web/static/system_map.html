@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Animal-AN 系統架構圖</title>
+<style>
+  :root{
+    --bg:#EEF1EF; --card:#FFFFFF; --ink:#22303C; --muted:#67788A; --line:#8895A3;
+    --z-master:#5B7185; --z-purchase:#A8702A; --z-inv:#3E7D5D;
+    --z-sales:#3D6B99; --z-acct:#7D5595; --z-report:#A2543F; --z-legacy:#98999B;
+    --font-sans:"Avenir Next","PingFang TC","Microsoft JhengHei",-apple-system,sans-serif;
+    --font-mono:"SF Mono",ui-monospace,Menlo,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden}
+  body{font-family:var(--font-sans);color:var(--ink);background:var(--bg)}
+
+  /* ---------- 頂欄 ---------- */
+  .topbar{position:fixed;inset:0 0 auto 0;z-index:20;display:flex;align-items:center;gap:16px;
+    padding:10px 18px;background:rgba(255,255,255,.92);backdrop-filter:blur(6px);
+    border-bottom:1px solid #D9DFDB;flex-wrap:wrap}
+  .topbar h1{font-size:15px;font-weight:600;letter-spacing:.02em;white-space:nowrap}
+  .topbar h1 small{font-weight:400;color:var(--muted);margin-left:8px;font-size:12px}
+  .seg{display:flex;border:1px solid #C7CFD6;border-radius:8px;overflow:hidden}
+  .seg button{border:none;background:transparent;padding:6px 14px;font-family:inherit;
+    font-size:13px;cursor:pointer;color:var(--muted)}
+  .seg button.on{background:var(--ink);color:#fff}
+  .seg button:focus-visible{outline:2px solid var(--z-sales);outline-offset:-2px}
+  .ctl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .ctl button{width:26px;height:26px;border:1px solid #C7CFD6;background:#fff;border-radius:6px;
+    cursor:pointer;font-size:14px;line-height:1;color:var(--ink)}
+  .ctl button.wide{width:auto;padding:0 10px;font-size:12px}
+  .ctl button:focus-visible{outline:2px solid var(--z-sales)}
+  label.chk{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer}
+  label.chk[hidden]{display:none}
+  .legend{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+  .legend .chip{display:inline-flex;align-items:center;gap:4px}
+  .legend .chip i{width:10px;height:10px;border-radius:3px;display:inline-block}
+  .legend .lstyle{display:inline-flex;align-items:center;gap:4px}
+  .legend svg{vertical-align:middle}
+  #focusChip{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink);
+    background:#fff;border:1px solid #C7CFD6;border-radius:99px;padding:3px 6px 3px 12px}
+  #focusChip b{font-weight:600}
+  #focusChip button{border:none;background:#E8ECE9;border-radius:50%;width:18px;height:18px;
+    cursor:pointer;font-size:10px;line-height:1;color:var(--ink)}
+  #focusChip button:focus-visible{outline:2px solid var(--z-sales)}
+  #focusChip[hidden]{display:none}
+
+  /* ---------- 畫布 ---------- */
+  #viewport{position:absolute;inset:0;cursor:grab;overflow:hidden;
+    background-image:radial-gradient(circle,#D4DAD5 1px,transparent 1px);
+    background-size:26px 26px}
+  #viewport.panning{cursor:grabbing}
+  #stage{position:absolute;left:0;top:0;transform-origin:0 0}
+  #edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+  .plate{position:absolute;border-radius:14px;pointer-events:none;
+    border:1.5px dashed color-mix(in srgb,var(--z) 45%, transparent);
+    background:color-mix(in srgb,var(--z) 5%, transparent)}
+  .plate b{position:absolute;top:-11px;left:16px;background:var(--bg);padding:0 8px;
+    font-size:12.5px;font-weight:600;letter-spacing:.12em;color:var(--z)}
+
+  /* ---------- 卡片 ---------- */
+  .card{position:absolute;background:var(--card);border-radius:10px;cursor:pointer;
+    border:1px solid color-mix(in srgb,var(--z) 35%, #DEE3E0);
+    box-shadow:0 1px 3px rgba(34,48,60,.10),0 4px 14px rgba(34,48,60,.06);
+    transition:opacity .18s, box-shadow .18s; user-select:none}
+  .card:hover{box-shadow:0 2px 6px rgba(34,48,60,.14),0 8px 22px rgba(34,48,60,.10)}
+  .card.sel{box-shadow:0 0 0 2.5px var(--z),0 8px 22px rgba(34,48,60,.14)}
+  .card.dim{opacity:.22}
+  .card .hd{display:flex;align-items:baseline;gap:8px;padding:9px 12px;
+    background:color-mix(in srgb,var(--z) 10%, #fff);
+    border-bottom:1px solid color-mix(in srgb,var(--z) 22%, #E8ECE9);
+    border-radius:10px 10px 0 0}
+  .card .hd .dot{width:9px;height:9px;border-radius:3px;background:var(--z);flex:none;align-self:center}
+
+  .card.biz{width:290px}
+  .card.biz .hd b{font-size:14.5px;font-weight:600}
+  .card.biz .sub{padding:8px 12px 2px;font-size:12px;color:var(--muted);line-height:1.5}
+  .card.biz ul{list-style:none;padding:6px 12px 11px}
+  .card.biz li{font-size:12px;line-height:1.45;padding:2.5px 0 2.5px 14px;position:relative}
+  .card.biz li::before{content:"";position:absolute;left:2px;top:9px;width:5px;height:5px;
+    border-radius:50%;background:color-mix(in srgb,var(--z) 65%, #fff)}
+
+  .card.uml{width:300px}
+  .card.uml .hd code{font-family:var(--font-mono);font-size:12.5px;font-weight:600}
+  .card.uml .hd .zh{font-size:11.5px;color:var(--muted);margin-left:auto}
+  .card.uml ul{list-style:none;padding:5px 0}
+  .card.uml li{display:flex;align-items:baseline;gap:6px;padding:1.5px 12px;font-size:11px;
+    font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+  .card.uml li i{flex:none;font-style:normal;font-size:9px;font-weight:700;width:20px;
+    letter-spacing:.04em;color:#fff;text-align:center;border-radius:3px;padding:1px 0;
+    background:transparent;visibility:hidden}
+  .card.uml li.pk i{background:var(--ink);visibility:visible}
+  .card.uml li.fk i{background:color-mix(in srgb,var(--z) 80%, #333);visibility:visible}
+  .card.uml li code{color:var(--ink)}
+  .card.uml li.pk code{font-weight:700}
+  .card.uml li .t{margin-left:auto;color:var(--muted);font-size:10px;white-space:nowrap}
+  .card.uml .ft{padding:6px 12px 8px;font-size:10.5px;color:var(--muted);
+    border-top:1px dashed #E2E7E3}
+
+  /* 狀態機視圖 */
+  .card.sm-state{width:300px;border-radius:18px}
+  .card.sm-state .hd{border-radius:18px 18px 0 0}
+  .card.sm-state .hd b{font-size:14px;font-weight:600}
+  .card.sm-state ul{list-style:none;padding:7px 14px 11px}
+  .card.sm-state li{font-size:11.5px;line-height:1.55;color:var(--muted);
+    font-variant-numeric:tabular-nums}
+  .card.sm-state li:first-child{color:var(--ink);font-family:var(--font-mono);font-size:11px}
+  .card.sm-note{width:250px;border-style:dashed;border-width:1.5px;border-radius:4px;
+    background:color-mix(in srgb,var(--z) 4%, #FFFDF8)}
+  .card.sm-note .hd{background:transparent;border-bottom:1px dashed color-mix(in srgb,var(--z) 30%, #E8ECE9);
+    border-radius:4px 4px 0 0;padding:7px 12px}
+  .card.sm-note .hd b{font-size:12.5px;font-weight:600}
+  .card.sm-note ul{list-style:none;padding:6px 12px 9px}
+  .card.sm-note li{font-size:11px;line-height:1.5;color:var(--muted)}
+  .card.sm-start,.card.sm-end{width:26px;height:26px;border-radius:50%;background:var(--ink);
+    border:none;box-shadow:0 1px 4px rgba(34,48,60,.3)}
+  .card.sm-end{background:#fff;border:2.5px solid var(--ink)}
+  .card.sm-end::after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--ink)}
+  .edge.notelink path{stroke-dasharray:2 4;stroke-width:1.2}
+
+  /* ---------- 邊線 ---------- */
+  .edge path{fill:none;stroke:var(--line);stroke-width:1.6}
+  .edge.logic path{stroke-dasharray:5 4}
+  .edge.flow path{stroke-width:2}
+  .edge text{font-family:var(--font-sans);font-size:10.5px;fill:var(--muted);
+    paint-order:stroke;stroke:var(--bg);stroke-width:3.5px;stroke-linejoin:round}
+  .edge.dim{opacity:.12}
+  .edge.hot path{stroke:var(--ink);stroke-width:2.4}
+  .edge.hot text{fill:var(--ink);font-weight:600}
+
+  .hint{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:20;
+    font-size:11.5px;color:var(--muted);background:rgba(255,255,255,.9);
+    padding:5px 14px;border-radius:99px;border:1px solid #DDE2DE;white-space:nowrap}
+  @media (prefers-reduced-motion:reduce){.card,.edge{transition:none}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Animal-AN 系統架構圖<small id="counts"></small></h1>
+  <div class="seg" role="tablist">
+    <button id="btnBiz" class="on">商業流程</button>
+    <button id="btnUml">資料庫 UML</button>
+    <button id="btnSm">狀態機</button>
+  </div>
+  <label class="chk" id="expandWrap" hidden><input type="checkbox" id="expandAll">顯示全部欄位</label>
+  <div class="ctl">
+    <button id="zOut" title="縮小">−</button>
+    <button id="zIn" title="放大">＋</button>
+    <button id="zFit" class="wide">符合視窗</button>
+  </div>
+  <span id="focusChip" hidden>聚焦：<b></b><button id="focusClear" aria-label="取消聚焦">✕</button></span>
+  <div class="legend" id="legend"></div>
+</div>
+
+<div id="viewport">
+  <div id="stage">
+    <svg id="edges"><defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#8895A3"/></marker>
+      <marker id="arrHot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#22303C"/></marker>
+    </defs><g id="eg"></g></svg>
+    <div id="plates"></div>
+    <div id="cards"></div>
+  </div>
+</div>
+<div class="hint">拖曳空白處平移　·　滾輪縮放　·　點卡片檢視關聯　·　卡片可拖曳調整位置</div>
+
+<script>
+'use strict';
+/* ================= 資料 ================= */
+const ZONES = {
+  master:  ['基本資料','var(--z-master)'],
+  purchase:['採購與進貨','var(--z-purchase)'],
+  inv:     ['庫存與分裝','var(--z-inv)'],
+  sales:   ['銷售與出貨','var(--z-sales)'],
+  acct:    ['會計帳務','var(--z-acct)'],
+  report:  ['報表','var(--z-report)'],
+  legacy:  ['舊表（保留）','var(--z-legacy)'],
+};
+
+/* ---- 商業流程視圖 ---- */
+const BIZ = {
+  size:[2520,1320],
+  plates:[
+    ['master',40,80,380,930],['purchase',450,80,320,330],['inv',770,80,960,520],
+    ['sales',1730,80,320,330],['acct',450,570,1600,640],['report',2100,570,360,420],
+  ],
+  nodes:[
+    ['supplier','master',70,150,'供應商','往來的原廠、進口商與代理。',
+      ['付款條件、幣別與銀行資訊','藥商許可證與效期','A / B / C 評等']],
+    ['bulk','master',70,370,'原物料（原裝品）','進口的原裝棧板 / 桶 / 箱。',
+      ['料號唯一、安全庫存告警','儲存溫層（室溫 / 冷藏 / 冷凍）']],
+    ['product','master',70,590,'產品（分裝品）','實際販售的 SKU。',
+      ['換算率：1 原裝 → N 售賣單位','標準售價、再訂購點']],
+    ['customer','master',70,810,'客戶','養豬場、動物醫院、經銷。',
+      ['信用額度與帳期','統編與發票抬頭']],
+    ['po','purchase',470,150,'進貨單','向供應商採購原裝品入庫。',
+      ['批次成本與效期為必填','入庫同時建立原裝批號']],
+    ['bulkstock','inv',790,150,'原裝批號庫存','每一批的數量、成本、效期。',
+      ['批次成本計價','近效期告警（90 天內）']],
+    ['repack','inv',1110,150,'分裝作業','把原裝桶分裝成售賣品。',
+      ['產出 = 原裝量 × 換算率','成本自動分攤到每一單位','產出批號效期必填']],
+    ['sellstock','inv',1430,150,'分裝品批號庫存','可販售的成品批號。',
+      ['FEFO：效期近的先出','帶分攤後單位成本']],
+    ['ledger','inv',1110,395,'庫存流水帳','所有庫存異動的完整紀錄。',
+      ['進貨 / 分裝 / 銷貨 / 調整全自動記錄','可追每批餘額變化']],
+    ['so','sales',1750,150,'銷貨單','出貨給客戶。',
+      ['FEFO 自動挑批出庫','自動帶入標準售價']],
+    ['pinv','acct',470,640,'採購發票','供應商開立給我們的發票。',
+      ['多筆明細、自動算進項稅','自動產生應付帳款']],
+    ['ap','acct',790,640,'應付帳款','還沒付給供應商的錢。',
+      ['未結餘額即時更新','逾期天數追蹤']],
+    ['pay','acct',1110,640,'收付款','收款與付款的核銷作業。',
+      ['金額不可超過未結餘額','付清自動轉「已付」']],
+    ['ar','acct',1430,640,'應收帳款','客戶還沒付的錢。',
+      ['未結餘額、逾期天數','信用額度告警依據']],
+    ['sinv','acct',1750,640,'銷售發票','開立給客戶的發票。',
+      ['多筆明細、自動算銷項稅','自動產生應收帳款']],
+    ['tax','acct',1110,960,'稅務彙總','每月營業稅結算。',
+      ['應納稅額 = 銷項稅 − 進項稅','申報狀態追蹤（草稿 / 已申報）']],
+    ['report','report',2130,640,'報表中心','營運與財務報表。',
+      ['月報、庫存、毛利、信用告警','每張報表可匯出 Excel（CSV）']],
+  ],
+  edges:[
+    ['supplier','po','進貨',1],['bulk','po','選料',0],
+    ['po','bulkstock','入庫＋批次成本',1],
+    ['bulkstock','repack','領用原裝批',1],['product','repack','換算率',0],
+    ['repack','sellstock','產出入庫・成本分攤',1],
+    ['sellstock','so','FEFO 出庫',1],['customer','so','訂購',0],
+    ['po','ledger','自動記錄',0],['repack','ledger','自動記錄',0],['so','ledger','自動記錄',0],
+    ['supplier','pinv','開立',0],
+    ['pinv','ap','自動產生',1],['ap','pay','付款核銷',1],
+    ['so','sinv','關聯開票',0],
+    ['sinv','ar','自動產生',1],['ar','pay','收款核銷',1],
+    ['pinv','tax','進項稅',0],['sinv','tax','銷項稅',0],
+    ['ledger','report','',0],['ar','report','',0],['tax','report','',0],
+  ],
+};
+
+/* ---- UML 視圖：欄位 [名稱,型別,旗標,FK目標]  旗標 P=主鍵 F=外鍵 U=唯一 K=精簡模式顯示 ---- */
+const T = (id,zone,x,y,zh,fields,note)=>({id,zone,x,y,zh,fields,note});
+const UML = { size:[2680,1720], plates:[], nodes:[
+ T('suppliers','master',60,140,'供應商',[
+  ['id','int','P'],['code','str(20)','UK'],['name','str(100)','K'],['short_name','str(50)',''],
+  ['supplier_type','enum','K'],['country','str(50)',''],['contact_person','str(100)',''],
+  ['phone','str(20)',''],['email','str(100)',''],['address','text',''],['tax_id','str(20)',''],
+  ['credit_term_days','int','K'],['payment_method','str(50)',''],['currency','str(10)',''],
+  ['bank_name','str(100)',''],['bank_branch','str(100)',''],['bank_account','str(50)',''],
+  ['bank_swift','str(20)',''],['license_number','str(50)',''],['license_expiry','date',''],
+  ['rating','str(5)',''],['notes','text',''],['is_active','bool',''],
+  ['created_at','datetime',''],['updated_at','datetime','']]),
+ T('customers','master',60,700,'客戶',[
+  ['id','int','P'],['code','str(20)','UK'],['name','str(100)','K'],['short_name','str(50)',''],
+  ['customer_type','enum','K'],['contact_person','str(100)',''],['phone','str(20)',''],
+  ['email','str(100)',''],['address','text',''],['billing_address','text',''],
+  ['shipping_address','text',''],['invoice_title','str(100)',''],['tax_id','str(20)',''],
+  ['credit_term_days','int','K'],['credit_limit','float','K'],['current_balance','float','K'],
+  ['sales_rep','str(50)',''],['farm_license','str(50)',''],['notes','text',''],
+  ['is_active','bool',''],['created_at','datetime',''],['updated_at','datetime','']]),
+ T('materials','master',430,140,'原裝品主檔',[
+  ['id','int','P'],['code','str(50)','UK'],['name','str(100)','K'],['description','text',''],
+  ['product_type','enum',''],['unit','str(20)','K'],['quantity','float','K'],
+  ['min_quantity','float','K'],['storage_type','enum',''],['storage_temp','float',''],
+  ['min_temperature','float',''],['max_temperature','float',''],['shelf_life_months','int',''],
+  ['default_supplier_id','int','F','suppliers'],['registration_number','str(50)',''],
+  ['country_of_origin','str(50)',''],['is_active','bool',''],
+  ['created_at','datetime',''],['updated_at','datetime','']]),
+ T('products','master',430,660,'分裝品 SKU',[
+  ['id','int','P'],['code','str(50)','UK'],['name','str(100)','K'],['product_type','enum',''],
+  ['storage_type','enum',''],['package_type','enum',''],['unit','str(20)','K'],
+  ['bulk_item_id','int','F','materials'],['units_per_bulk','float','K'],
+  ['selling_price','float','K'],['reorder_point','float',''],['shelf_life_months','int',''],
+  ['manufacturer','str(100)',''],['registration_number','str(50)',''],
+  ['spec','str',''],['package_size','float',''],['package_unit','str',''],
+  ['units_per_package','float',''],['dosage_form','str',''],['concentration','str',''],
+  ['active_ingredient','str',''],['barcode','str',''],
+  ['min_temperature','float',''],['max_temperature','float',''],['description','text',''],
+  ['is_active','bool',''],['created_at','datetime',''],['updated_at','datetime','']]),
+ T('supplier_products','master',430,1360,'供應商供貨對照',[
+  ['id','int','P'],['supplier_id','int','F','suppliers'],['product_id','int','F','products'],
+  ['supplier_product_code','str(50)','K'],['unit_price','float','K'],
+  ['min_order_quantity','float',''],['lead_time_days','int',''],['is_preferred','bool','']]),
+ T('purchase_orders','purchase',800,100,'進貨單',[
+  ['id','int','P'],['po_number','str(20)','UK'],['supplier_id','int','F','suppliers'],
+  ['order_date','datetime','K'],['expected_delivery','datetime',''],['status','enum','K'],
+  ['total_amount','float','K'],['payment_status','enum',''],['notes','text',''],
+  ['created_at','datetime',''],['updated_at','datetime','']]),
+ T('purchase_order_items','purchase',800,420,'進貨單明細',[
+  ['id','int','P'],['po_id','int','F','purchase_orders'],['product_id','int','F','products'],
+  ['quantity','float','K'],['unit_price','float','K'],['total_price','float',''],
+  ['received_quantity','float','']]),
+ T('sales_orders','sales',800,700,'銷貨單',[
+  ['id','int','P'],['so_number','str(20)','UK'],['customer_id','int','F','customers'],
+  ['order_date','datetime','K'],['delivery_date','datetime',''],['status','enum','K'],
+  ['total_amount','float','K'],['payment_status','enum',''],['notes','text',''],
+  ['created_at','datetime',''],['updated_at','datetime','']]),
+ T('sales_order_items','sales',800,1020,'銷貨單明細',[
+  ['id','int','P'],['so_id','int','F','sales_orders'],['product_id','int','F','products'],
+  ['batch_id','int','F','batches'],['quantity','float','K'],['unit_price','float','K'],
+  ['total_price','float',''],['shipped_quantity','float','']]),
+ T('material_batches','inv',1170,100,'原裝批號',[
+  ['id','int','P'],['material_id','int','F','materials'],['batch_number','str(50)','K'],
+  ['lot_number','str(50)',''],['quantity','float','K'],['manufacturing_date','datetime',''],
+  ['expiry_date','datetime','K'],['unit_cost','float','K'],['supplier_id','int','F','suppliers'],
+  ['quality_status','enum',''],['created_at','datetime','']]),
+ T('repack_orders','inv',1170,440,'分裝單',[
+  ['id','int','P'],['repack_number','str(20)','UK'],['bulk_batch_id','int','F','material_batches'],
+  ['bulk_qty_consumed','float','K'],['product_id','int','F','products'],
+  ['output_batch_id','int','F','batches'],['output_qty','float','K'],
+  ['repack_date','datetime',''],['operator','str(50)',''],['notes','text',''],
+  ['created_at','datetime','']]),
+ T('batches','inv',1170,800,'分裝品批號',[
+  ['id','int','P'],['product_id','int','F','products'],['batch_number','str(50)','K'],
+  ['manufacture_date','datetime',''],['expiry_date','datetime','K'],['quantity','float','K'],
+  ['unit_cost','float','K'],['current_temperature','float',''],
+  ['quality_check_status','str(20)',''],['parent_bulk_batch_id','int','F','material_batches'],
+  ['notes','text',''],['created_at','datetime','']]),
+ T('inventory_transactions','inv',1170,1160,'統一庫存帳',[
+  ['id','int','P'],['item_kind','enum','K'],['batch_id','int','F','material_batches'],
+  ['transaction_type','enum','K'],['quantity','float','K'],['unit_cost','float',''],
+  ['balance_after','float','K'],['reference_type','enum','K'],['reference_id','int','K'],
+  ['transaction_date','datetime',''],['notes','text',''],['created_at','datetime','']],
+  'item_kind=SELLABLE 時 batch_id 邏輯指向 batches（無跨表 FK）'),
+ T('purchase_invoices','acct',1560,80,'採購發票',[
+  ['id','int','P'],['invoice_number','str(50)','K'],['supplier_code','str(20)','K'],
+  ['supplier_name','str(100)',''],['invoice_date','date','K'],['due_date','date','K'],
+  ['total_amount_pretax','float',''],['total_tax_amount','float','K'],
+  ['total_amount_with_tax','float','K'],['payment_status','enum','K'],
+  ['paid_amount','float',''],['remaining_balance','float','K'],['payment_method','str(50)',''],
+  ['currency','str(10)',''],['purchase_order_id','int','F','purchase_orders'],
+  ['tax_classification','enum',''],['vat_registration','str(20)',''],['notes','text',''],
+  ['created_at','datetime',''],['created_by','str(50)','']],
+  'UNIQUE(supplier_code, invoice_number)'),
+ T('purchase_transactions','acct',1560,560,'採購發票明細',[
+  ['id','int','P'],['purchase_invoice_id','int','F','purchase_invoices'],
+  ['bulk_item_code','str(50)','K'],['bulk_item_name','str(100)',''],
+  ['bulk_batch_number','str(50)','K'],['quantity','float','K'],['unit','str(20)',''],
+  ['unit_price','float','K'],['line_amount','float',''],['tax_rate','float',''],
+  ['tax_amount','float',''],['line_total','float','K'],['manufacturing_date','date',''],
+  ['expiry_date','date',''],['lot_number','str(50)',''],['received_date','date',''],
+  ['received_qty','float',''],['qc_status','str(20)',''],['reference_type','str(20)',''],
+  ['reference_id','int',''],['notes','text',''],['created_at','datetime','']]),
+ T('sales_invoices','acct',1560,1080,'銷售發票',[
+  ['id','int','P'],['invoice_number','str(30)','UK'],['customer_code','str(20)','K'],
+  ['customer_name','str(100)',''],['invoice_date','date','K'],['due_date','date','K'],
+  ['total_amount_pretax','float',''],['total_tax_amount','float','K'],
+  ['total_amount_with_tax','float','K'],['payment_status','enum','K'],
+  ['paid_amount','float',''],['remaining_balance','float','K'],['payment_method','str(50)',''],
+  ['currency','str(10)',''],['sales_order_id','int','F','sales_orders'],
+  ['tax_classification','enum',''],['unified_invoice_number','str(20)',''],['notes','text',''],
+  ['created_at','datetime',''],['created_by','str(50)',''],['issued_at','datetime','']]),
+ T('sales_transactions','acct',1560,1560,'銷售發票明細',[
+  ['id','int','P'],['sales_invoice_id','int','F','sales_invoices'],
+  ['product_code','str(50)','K'],['product_name','str(100)',''],
+  ['product_batch_number','str(50)',''],['quantity','float','K'],['unit','str(20)',''],
+  ['unit_price','float','K'],['line_amount','float','K'],['tax_rate','float',''],
+  ['tax_amount','float','K'],['line_total','float',''],['cost_per_unit','float',''],
+  ['gross_profit','float','K'],['reference_type','str(20)',''],['reference_id','int',''],
+  ['notes','text',''],['created_at','datetime','']]),
+ T('accounts_payable','acct',1980,80,'應付帳款',[
+  ['id','int','P'],['supplier_code','str(20)','K'],['supplier_name','str(100)','K'],
+  ['purchase_invoice_id','int','FU','purchase_invoices'],['invoice_number','str(50)','K'],
+  ['original_amount','float','K'],['paid_amount','float','K'],
+  ['outstanding_amount','float','K'],['invoice_date','date',''],['due_date','date','K'],
+  ['days_overdue','int','K'],['overdue_status','str(20)','K'],
+  ['last_payment_date','date',''],['notes','text','']]),
+ T('payment_records','acct',1980,480,'收付款紀錄',[
+  ['id','int','P'],['payment_number','str(30)','UK'],['payment_type','enum','K'],
+  ['transaction_date','date','K'],['reference_type','str(20)','K'],['reference_id','int','K'],
+  ['supplier_or_customer_code','str(20)',''],['supplier_or_customer_name','str(100)','K'],
+  ['amount','float','K'],['currency','str(10)',''],['payment_method','str(50)','K'],
+  ['bank_account_from','str(50)',''],['bank_account_to','str(50)',''],
+  ['check_number','str(50)',''],['transaction_reference','str(100)',''],['notes','text',''],
+  ['created_at','datetime',''],['created_by','str(50)',''],
+  ['verified_at','datetime',''],['verified_by','str(50)','']],
+  'reference_id 依 payment_type 邏輯指向銷售或採購發票'),
+ T('accounts_receivable','acct',1980,1060,'應收帳款',[
+  ['id','int','P'],['customer_code','str(20)','K'],['customer_name','str(100)','K'],
+  ['sales_invoice_id','int','FU','sales_invoices'],['invoice_number','str(30)','K'],
+  ['original_amount','float','K'],['paid_amount','float','K'],
+  ['outstanding_amount','float','K'],['invoice_date','date',''],['due_date','date','K'],
+  ['days_overdue','int','K'],['overdue_status','str(20)','K'],
+  ['last_payment_date','date',''],['notes','text','']]),
+ T('tax_records','acct',1980,1440,'稅務紀錄',[
+  ['id','int','P'],['tax_period','str(10)','K'],['tax_type','enum','K'],
+  ['total_sales_amount','float','K'],['total_sales_tax','float','K'],
+  ['total_purchase_amount','float','K'],['total_purchase_tax','float','K'],
+  ['net_tax_payable','float','K'],['sales_invoice_count','int',''],
+  ['purchase_invoice_count','int',''],['filing_status','enum','K'],['filing_date','date',''],
+  ['filing_reference_number','str(50)',''],['payment_due_date','date',''],
+  ['payment_status','str(10)',''],['payment_date','date',''],['notes','text',''],
+  ['created_at','datetime',''],['created_by','str(50)','']],
+  'UNIQUE(tax_period, tax_type)・月彙總自銷售/採購發票'),
+ T('inventory_movements','report',2400,80,'庫存移動帳簿',[
+  ['id','int','P'],['movement_date','date','K'],['item_type','enum','K'],
+  ['item_code','str(50)','K'],['item_name','str(100)',''],['batch_number','str(50)','K'],
+  ['movement_type','enum','K'],['quantity_change','float','K'],['unit_price','float',''],
+  ['amount','float',''],['balance_before','float',''],['balance_after','float','K'],
+  ['reference_type','str(20)','K'],['reference_id','int',''],['notes','text',''],
+  ['created_at','datetime',''],['created_by','str(50)','']],
+  '以 item_code 邏輯關聯，無 FK（會計側帳簿）'),
+ T('inventory_counts','report',2400,560,'庫存盤點',[
+  ['id','int','P'],['count_number','str(30)','K'],['count_date','date','K'],
+  ['item_code','str(50)','K'],['item_name','str(100)',''],['batch_number','str(50)',''],
+  ['account_balance','float','K'],['physical_count','float','K'],['variance','float','K'],
+  ['variance_reason','str(200)',''],['unit_price','float',''],['variance_amount','float','K'],
+  ['notes','text',''],['created_at','datetime',''],['created_by','str(50)',''],
+  ['verified_at','datetime',''],['verified_by','str(50)','']],
+  '盤點差異 = 實盤 − 帳面'),
+ T('payments','legacy',2400,1040,'舊付款表',[
+  ['id','int','P'],['reference_type','str(20)','K'],['reference_id','int','K'],
+  ['payment_date','datetime','K'],['amount','float','K'],['payment_method','str(50)',''],
+  ['payment_reference','str(100)',''],['status','enum','K'],['notes','text',''],
+  ['created_at','datetime',''],['updated_at','datetime','']],
+  '舊 PO/SO 付款表；新流程改用 payment_records'),
+],
+edges:[
+  ['materials','suppliers','n:1',1],
+  ['material_batches','materials','n:1',1],['material_batches','suppliers','n:1',1],
+  ['products','materials','n:1',1],
+  ['batches','products','n:1',1],['batches','material_batches','預留追溯',0],
+  ['repack_orders','material_batches','n:1',1],['repack_orders','products','n:1',1],
+  ['repack_orders','batches','1:1',1],
+  ['inventory_transactions','material_batches','BULK',1],
+  ['inventory_transactions','batches','SELLABLE',0],
+  ['supplier_products','suppliers','n:1',1],['supplier_products','products','n:1',1],
+  ['purchase_orders','suppliers','n:1',1],
+  ['purchase_order_items','purchase_orders','n:1',1],['purchase_order_items','products','n:1',1],
+  ['sales_orders','customers','n:1',1],
+  ['sales_order_items','sales_orders','n:1',1],['sales_order_items','products','n:1',1],
+  ['sales_order_items','batches','n:1',1],
+  ['purchase_invoices','purchase_orders','n:1',1],
+  ['purchase_transactions','purchase_invoices','n:1',1],
+  ['sales_invoices','sales_orders','n:1',1],
+  ['sales_transactions','sales_invoices','n:1',1],
+  ['accounts_payable','purchase_invoices','1:1',1],
+  ['accounts_receivable','sales_invoices','1:1',1],
+  ['payment_records','sales_invoices','收款',0],['payment_records','purchase_invoices','付款',0],
+  ['tax_records','sales_invoices','月彙總',0],['tax_records','purchase_invoices','月彙總',0],
+  ['payments','purchase_orders','舊 PO/SO',0],
+]};
+
+/* ---- 狀態機視圖：原料 → 商品 → 售出 → 收款 生命週期
+   節點 type: start / end / state / note；edges kind: 1=行為轉換 0=條件自動 2=報表關聯 ---- */
+const STM = {
+  size:[2420,1300],
+  plates:[
+    ['purchase',60,80,420,760,'原裝品階段'],
+    ['inv',520,80,420,760,'分裝品階段'],
+    ['sales',980,80,380,760,'銷售出貨'],
+    ['acct',1400,80,760,760,'發票與收款'],
+    ['report',60,900,2100,300,'相關報表（點線＝報表取數來源）'],
+  ],
+  nodes:[
+    {id:'start',type:'start',zone:'purchase',x:90,y:170},
+    {id:'s_bulk',type:'state',zone:'purchase',x:130,y:250,title:'原裝在庫',
+     lines:['material_batches','批次成本計價・效期必填','低庫存告警（安全庫存）','盤點調整 adjust()']},
+    {id:'s_bulk_exp',type:'state',zone:'purchase',x:130,y:560,title:'原裝近效期',
+     lines:['效期 ≤ 90 天','儀表板即時告警']},
+    {id:'s_sell',type:'state',zone:'inv',x:570,y:250,title:'分裝品在庫（可售）',
+     lines:['batches','單位成本 = 批次成本 ÷ 換算率','FEFO 佇列：效期近者先出']},
+    {id:'s_sell_exp',type:'state',zone:'inv',x:570,y:560,title:'分裝品近效期',
+     lines:['效期 ≤ 90 天','FEFO 下優先被挑出']},
+    {id:'s_sold',type:'state',zone:'sales',x:1020,y:250,title:'已出貨（售出）',
+     lines:['庫存帳 OUT・銷貨單 DELIVERED','毛利 =（售價 − 成本）× 數量']},
+    {id:'s_unpaid',type:'state',zone:'acct',x:1440,y:250,title:'發票未收 UNPAID',
+     lines:['銷售發票開立・自動算稅','應收帳款同步開立','佔用客戶信用額度']},
+    {id:'s_partial',type:'state',zone:'acct',x:1440,y:560,title:'部分收款 PARTIAL',
+     lines:['paid_amount 累計','餘額 = 含稅額 − 已收']},
+    {id:'s_overdue',type:'state',zone:'acct',x:1810,y:560,title:'逾期 OVERDUE',
+     lines:['days_overdue 逾期天數','信用告警報表列示']},
+    {id:'s_paid',type:'state',zone:'acct',x:1810,y:250,title:'已收清 PAID',
+     lines:['餘額歸零・應收結清','記錄最後收款日']},
+    {id:'end',type:'end',zone:'acct',x:2190,y:300},
+    {id:'n_inv',type:'note',zone:'report',x:100,y:960,title:'庫存即時表・估值',
+     lines:['原裝＋分裝庫存數量','以批次成本估值']},
+    {id:'n_expire',type:'note',zone:'report',x:400,y:960,title:'近效期批號報表',
+     lines:['90 天內到期批號','原裝與分裝皆列']},
+    {id:'n_repack',type:'note',zone:'report',x:700,y:960,title:'分裝產出報表',
+     lines:['各分裝單產出與成本分攤']},
+    {id:'n_ledger',type:'note',zone:'report',x:1000,y:960,title:'庫存流水帳',
+     lines:['進貨/分裝/銷貨/調整','每筆異動可追溯']},
+    {id:'n_sales',type:'note',zone:'report',x:1300,y:960,title:'日銷售・銷售毛利',
+     lines:['日銷售彙總','毛利分析（成本 vs 售價）']},
+    {id:'n_ar',type:'note',zone:'report',x:1600,y:960,title:'應收帳款・信用告警',
+     lines:['未結餘額・逾期天數','信用額度超限告警']},
+    {id:'n_tax',type:'note',zone:'report',x:1900,y:960,title:'稅務彙總',
+     lines:['銷項稅 − 進項稅','月申報（草稿 → 已申報）']},
+  ],
+  edges:[
+    ['start','s_bulk','進貨單：receive_bulk（批次成本＋效期必填）',1],
+    ['s_bulk','s_sell','分裝 repack：產出 = 原裝 × 換算率',1],
+    ['s_bulk','s_bulk_exp','[效期 ≤ 90 天]',0],
+    ['s_bulk_exp','s_sell','仍可分裝',0],
+    ['s_sell','s_sell_exp','[效期 ≤ 90 天]',0],
+    ['s_sell','s_sold','銷貨單：FEFO 自動挑批出庫',1],
+    ['s_sell_exp','s_sold','FEFO 優先出貨',0],
+    ['s_sold','s_unpaid','開立銷售發票：算稅＋產生應收',1],
+    ['s_unpaid','s_partial','收款（部分）',1],
+    ['s_unpaid','s_paid','收款（全額）',1],
+    ['s_partial','s_paid','收款（結清）',1],
+    ['s_unpaid','s_overdue','[超過到期日]',0],
+    ['s_partial','s_overdue','[超過到期日]',0],
+    ['s_overdue','s_paid','收款（結清）',1],
+    ['s_paid','end','',1],
+    ['n_inv','s_bulk','',2],['n_inv','s_sell','',2],
+    ['n_expire','s_bulk_exp','',2],['n_expire','s_sell_exp','',2],
+    ['n_repack','s_sell','',2],
+    ['n_ledger','s_bulk','',2],['n_ledger','s_sell','',2],['n_ledger','s_sold','',2],
+    ['n_sales','s_sold','',2],
+    ['n_ar','s_unpaid','',2],['n_ar','s_partial','',2],['n_ar','s_overdue','',2],
+    ['n_tax','s_unpaid','',2],
+  ],
+};
+
+/* ================= 畫布引擎 ================= */
+const $ = s=>document.querySelector(s);
+const viewport=$('#viewport'), stage=$('#stage'), eg=$('#eg'),
+      cardsEl=$('#cards'), platesEl=$('#plates'), edgesSvg=$('#edges');
+let view='biz', expand=false;
+let tx=0, ty=0, scale=1, sel=null;
+const pos={};   // 每視圖記住拖曳後座標 pos[view][id]=[x,y]
+
+function data(){ return view==='biz' ? BIZ : view==='sm' ? STM : UML; }
+
+function applyTransform(){ stage.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`; }
+
+function render(){
+  const d=data(); sel=null;
+  edgesSvg.setAttribute('width',d.size[0]); edgesSvg.setAttribute('height',d.size[1]);
+  platesEl.innerHTML=''; cardsEl.innerHTML='';
+  (d.plates||[]).forEach(([z,x,y,w,h,label])=>{
+    const p=document.createElement('div'); p.className='plate';
+    p.style.cssText=`--z:${ZONES[z][1]};left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
+    p.innerHTML=`<b>${label||ZONES[z][0]}</b>`; platesEl.appendChild(p);
+  });
+  d.nodes.forEach(n=>{
+    const id = view==='biz'? n[0] : n.id;
+    const zone = view==='biz'? n[1] : n.zone;
+    const saved=(pos[view]||{})[id];
+    const x=saved?saved[0]:(view==='biz'?n[2]:n.x), y=saved?saved[1]:(view==='biz'?n[3]:n.y);
+    const c=document.createElement('div');
+    c.className='card '+(view==='biz'?'biz':view==='sm'?('sm sm-'+n.type):'uml');
+    c.dataset.id=id;
+    c.style.cssText=`--z:${ZONES[zone][1]};left:${x}px;top:${y}px`;
+    if(view==='biz'){
+      c.innerHTML=`<div class="hd"><span class="dot"></span><b>${n[4]}</b></div>
+        <p class="sub">${n[5]}</p><ul>${n[6].map(f=>`<li>${f}</li>`).join('')}</ul>`;
+    }else if(view==='sm'){
+      if(n.type==='start'||n.type==='end'){
+        c.setAttribute('title', n.type==='start'?'起點':'終點');
+      }else{
+        c.innerHTML=`<div class="hd"><span class="dot"></span><b>${n.title}</b></div>
+          <ul>${n.lines.map(l=>`<li>${l}</li>`).join('')}</ul>`;
+      }
+    }else{
+      const fs=expand? n.fields : n.fields.filter(f=>/[PFK]/.test(f[2]));
+      c.innerHTML=`<div class="hd"><span class="dot"></span><code>${n.id}</code><span class="zh">${n.zh}</span></div>
+        <ul>${fs.map(f=>{
+          const cls=f[2].includes('P')?'pk':f[2].includes('F')?'fk':'';
+          const badge=f[2].includes('P')?'PK':f[2].includes('F')?'FK':'';
+          const typ=f[3]?`→ ${f[3]}`:f[1]+(f[2].includes('U')?' · UQ':'');
+          return `<li class="${cls}"><i>${badge}</i><code>${f[0]}</code><span class="t">${typ}</span></li>`;
+        }).join('')}</ul>
+        <div class="ft">${expand?`共 ${n.fields.length} 欄`:`顯示 ${fs.length} / ${n.fields.length} 欄`}${n.note?`　·　${n.note}`:''}</div>`;
+    }
+    cardsEl.appendChild(c);
+  });
+  $('#counts').textContent = view==='biz'
+    ? `　${d.nodes.length} 個功能・${d.edges.length} 條流程`
+    : view==='sm'
+    ? `　${d.nodes.filter(n=>n.type==='state').length} 個狀態・${d.edges.filter(e=>e[3]!==2).length} 個轉換・${d.nodes.filter(n=>n.type==='note').length} 張報表`
+    : `　${d.nodes.length} 張資料表・${d.edges.length} 條關聯`;
+  drawEdges(); fit();
+}
+
+function rectOf(id){
+  const el=cardsEl.querySelector(`[data-id="${CSS.escape(id)}"]`);
+  return {x:el.offsetLeft, y:el.offsetTop, w:el.offsetWidth, h:el.offsetHeight, el};
+}
+
+function drawEdges(){
+  const d=data(); eg.innerHTML='';
+  d.edges.forEach(([a,b,label,strong],i)=>{
+    const ra=rectOf(a), rb=rectOf(b);
+    const acx=ra.x+ra.w/2, acy=ra.y+ra.h/2, bcx=rb.x+rb.w/2, bcy=rb.y+rb.h/2;
+    const dx=bcx-acx, dy=bcy-acy;
+    let p1,p2,c1,c2;
+    if(Math.abs(dx)>=Math.abs(dy)){
+      const s=dx>0?1:-1;
+      p1=[acx+s*ra.w/2, acy]; p2=[bcx-s*rb.w/2, bcy];
+      const k=Math.max(40,Math.abs(dx)*0.35);
+      c1=[p1[0]+s*k,p1[1]]; c2=[p2[0]-s*k,p2[1]];
+    }else{
+      const s=dy>0?1:-1;
+      p1=[acx, acy+s*ra.h/2]; p2=[bcx, bcy-s*rb.h/2];
+      const k=Math.max(40,Math.abs(dy)*0.35);
+      c1=[p1[0],p1[1]+s*k]; c2=[p2[0],p2[1]-s*k];
+    }
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('class','edge'+(strong===2?' notelink':strong?' flow':' logic'));
+    g.dataset.a=a; g.dataset.b=b;
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',`M${p1[0]},${p1[1]} C${c1[0]},${c1[1]} ${c2[0]},${c2[1]} ${p2[0]},${p2[1]}`);
+    if(strong!==2) path.setAttribute('marker-end','url(#arr)');
+    g.appendChild(path);
+    if(label){
+      const mx=(p1[0]+3*c1[0]+3*c2[0]+p2[0])/8, my=(p1[1]+3*c1[1]+3*c2[1]+p2[1])/8;
+      const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x',mx); t.setAttribute('y',my-5); t.setAttribute('text-anchor','middle');
+      t.textContent=label; g.appendChild(t);
+    }
+    eg.appendChild(g);
+  });
+  refreshHighlight();
+}
+
+/* ---------- 頁面聚焦：依 SPA 目前頁面高亮相關卡片與流程 ---------- */
+const PAGE_LABELS={dashboard:'儀表板',purchase:'建立進貨單',inventory:'庫存/分裝',
+  'bulk-items':'原物料',products:'產品',sales:'建立銷貨單',suppliers:'供應商',
+  customers:'客戶','sales-invoice':'銷售發票','purchase-invoice':'採購發票',
+  payment:'收付款',reports:'報表'};
+const FOCUS={
+ biz:{
+  purchase:{primary:'po',set:['supplier','bulk','po','bulkstock','ledger']},
+  inventory:{primary:'repack',set:['bulkstock','repack','sellstock','product','ledger']},
+  'bulk-items':{primary:'bulk',set:['bulk','po','bulkstock']},
+  products:{primary:'product',set:['product','repack','sellstock']},
+  sales:{primary:'so',set:['sellstock','so','customer','ledger','sinv']},
+  suppliers:{primary:'supplier',set:['supplier','po','pinv','ap']},
+  customers:{primary:'customer',set:['customer','so','sinv','ar']},
+  'sales-invoice':{primary:'sinv',set:['so','sinv','ar','pay','tax']},
+  'purchase-invoice':{primary:'pinv',set:['supplier','pinv','ap','pay','tax']},
+  payment:{primary:'pay',set:['pay','ar','ap','sinv','pinv']},
+  reports:{primary:'report',set:['report','ledger','tax','ar']},
+ },
+ uml:{
+  purchase:{primary:'purchase_orders',set:['suppliers','purchase_orders','purchase_order_items','materials','material_batches','inventory_transactions']},
+  inventory:{primary:'repack_orders',set:['material_batches','repack_orders','batches','products','inventory_transactions']},
+  'bulk-items':{primary:'materials',set:['materials','material_batches','suppliers','products']},
+  products:{primary:'products',set:['products','batches','materials','supplier_products']},
+  sales:{primary:'sales_orders',set:['sales_orders','sales_order_items','customers','batches','inventory_transactions']},
+  suppliers:{primary:'suppliers',set:['suppliers','supplier_products','purchase_orders','purchase_invoices','accounts_payable']},
+  customers:{primary:'customers',set:['customers','sales_orders','sales_invoices','accounts_receivable']},
+  'sales-invoice':{primary:'sales_invoices',set:['sales_orders','sales_invoices','sales_transactions','accounts_receivable','payment_records','tax_records']},
+  'purchase-invoice':{primary:'purchase_invoices',set:['purchase_orders','purchase_invoices','purchase_transactions','accounts_payable','payment_records','tax_records']},
+  payment:{primary:'payment_records',set:['payment_records','sales_invoices','purchase_invoices','accounts_receivable','accounts_payable']},
+  reports:{primary:'tax_records',set:['inventory_movements','inventory_counts','tax_records','accounts_receivable','accounts_payable']},
+ },
+ sm:{
+  purchase:{primary:'s_bulk',set:['start','s_bulk','s_bulk_exp','n_inv','n_expire','n_ledger']},
+  inventory:{primary:'s_sell',set:['s_bulk','s_bulk_exp','s_sell','s_sell_exp','n_repack','n_inv','n_ledger']},
+  'bulk-items':{primary:'s_bulk',set:['start','s_bulk','s_bulk_exp','n_inv','n_expire']},
+  products:{primary:'s_sell',set:['s_sell','s_sell_exp','n_inv','n_expire']},
+  sales:{primary:'s_sold',set:['s_sell','s_sell_exp','s_sold','n_sales','n_ledger']},
+  customers:{primary:'s_sold',set:['s_sold','s_unpaid','s_overdue','n_ar']},
+  'sales-invoice':{primary:'s_unpaid',set:['s_sold','s_unpaid','s_partial','s_paid','n_ar','n_tax']},
+  payment:{primary:'s_paid',set:['s_unpaid','s_partial','s_overdue','s_paid','end','n_ar']},
+  reports:{primary:'n_sales',set:['n_inv','n_expire','n_repack','n_ledger','n_sales','n_ar','n_tax']},
+ }
+};
+let focusPage=null;
+
+function refreshHighlight(){
+  const d=data();
+  const rel=new Set();
+  let mode=null, primary=null;
+  if(sel){
+    mode='sel'; rel.add(sel);
+    d.edges.forEach(([a,b])=>{ if(a===sel)rel.add(b); if(b===sel)rel.add(a); });
+  }else{
+    const f=focusPage && FOCUS[view][focusPage];
+    if(f){ mode='focus'; f.set.forEach(x=>rel.add(x)); primary=f.primary; }
+  }
+  cardsEl.querySelectorAll('.card').forEach(c=>{
+    c.classList.toggle('sel', sel===c.dataset.id || (mode==='focus' && c.dataset.id===primary));
+    c.classList.toggle('dim', !!mode && !rel.has(c.dataset.id));
+  });
+  eg.querySelectorAll('.edge').forEach(e=>{
+    const hot = mode==='sel' ? (e.dataset.a===sel||e.dataset.b===sel)
+              : mode==='focus' ? (rel.has(e.dataset.a)&&rel.has(e.dataset.b))
+              : false;
+    e.classList.toggle('hot',hot);
+    e.classList.toggle('dim',!!mode && !hot);
+    if(!e.classList.contains('notelink'))
+      e.querySelector('path').setAttribute('marker-end',hot?'url(#arrHot)':'url(#arr)');
+  });
+  const chip=document.getElementById('focusChip');
+  const active = mode!=='sel' && focusPage && FOCUS[view][focusPage];
+  chip.hidden=!active;
+  if(active) chip.querySelector('b').textContent=PAGE_LABELS[focusPage]||focusPage;
+}
+
+function setFocusPage(page){
+  focusPage = (FOCUS.biz[page]||FOCUS.uml[page]) ? page : null;
+  sel=null; refreshHighlight();
+}
+addEventListener('message',e=>{
+  const m=e.data;
+  if(m && m.type==='focus') setFocusPage(m.page);
+});
+{ const qp=new URLSearchParams(location.search).get('focus'); if(qp) focusPage=(FOCUS.biz[qp]||FOCUS.uml[qp])?qp:null; }
+
+/* ---------- 平移 / 縮放 / 拖曳 ---------- */
+function fit(){
+  const th=document.querySelector('.topbar').offsetHeight;
+  const d=data(), vw=viewport.clientWidth, vh=viewport.clientHeight-th;
+  let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+  cardsEl.querySelectorAll('.card').forEach(c=>{
+    minX=Math.min(minX,c.offsetLeft); minY=Math.min(minY,c.offsetTop);
+    maxX=Math.max(maxX,c.offsetLeft+c.offsetWidth); maxY=Math.max(maxY,c.offsetTop+c.offsetHeight);
+  });
+  const pad=60, w=maxX-minX+pad*2, h=maxY-minY+pad*2;
+  scale=Math.min(vw/w, vh/h, 1.15);
+  tx=(vw-w*scale)/2-(minX-pad)*scale; ty=th+(vh-h*scale)/2-(minY-pad)*scale;
+  applyTransform();
+}
+function zoomAt(f,cx,cy){
+  const ns=Math.min(2.2,Math.max(0.15,scale*f));
+  tx=cx-(cx-tx)*ns/scale; ty=cy-(cy-ty)*ns/scale; scale=ns; applyTransform();
+}
+viewport.addEventListener('wheel',e=>{ e.preventDefault(); zoomAt(Math.exp(-e.deltaY*0.0012),e.clientX,e.clientY); },{passive:false});
+$('#zIn').onclick=()=>zoomAt(1.25,viewport.clientWidth/2,viewport.clientHeight/2);
+$('#zOut').onclick=()=>zoomAt(0.8,viewport.clientWidth/2,viewport.clientHeight/2);
+$('#zFit').onclick=fit;
+
+let drag=null;
+viewport.addEventListener('pointerdown',e=>{
+  const card=e.target.closest('.card');
+  drag={x0:e.clientX,y0:e.clientY,moved:false,card,
+        cx:card?card.offsetLeft:0, cy:card?card.offsetTop:0, tx0:tx, ty0:ty};
+  viewport.setPointerCapture(e.pointerId);
+  if(!card) viewport.classList.add('panning');
+});
+viewport.addEventListener('pointermove',e=>{
+  if(!drag) return;
+  const dx=e.clientX-drag.x0, dy=e.clientY-drag.y0;
+  if(Math.abs(dx)+Math.abs(dy)>4) drag.moved=true;
+  if(!drag.moved) return;
+  if(drag.card){
+    drag.card.style.left=(drag.cx+dx/scale)+'px';
+    drag.card.style.top =(drag.cy+dy/scale)+'px';
+    drawEdges();
+  }else{
+    tx=drag.tx0+dx; ty=drag.ty0+dy; applyTransform();
+  }
+});
+viewport.addEventListener('pointerup',e=>{
+  viewport.classList.remove('panning');
+  if(!drag) return;
+  if(drag.card){
+    if(drag.moved){
+      (pos[view]=pos[view]||{})[drag.card.dataset.id]=[drag.card.offsetLeft,drag.card.offsetTop];
+    }else{
+      sel = sel===drag.card.dataset.id ? null : drag.card.dataset.id;
+      refreshHighlight();
+    }
+  }else if(!drag.moved){ sel=null; refreshHighlight(); }
+  drag=null;
+});
+
+/* ---------- 檢視切換 / 圖例 ---------- */
+function setView(v){
+  view=v;
+  $('#btnBiz').classList.toggle('on',v==='biz');
+  $('#btnUml').classList.toggle('on',v==='uml');
+  $('#btnSm').classList.toggle('on',v==='sm');
+  $('#expandWrap').hidden = v!=='uml';
+  buildLegend(); render();
+}
+$('#btnBiz').onclick=()=>setView('biz');
+$('#btnUml').onclick=()=>setView('uml');
+$('#btnSm').onclick=()=>setView('sm');
+$('#expandAll').onchange=e=>{ expand=e.target.checked; render(); };
+
+function buildLegend(){
+  const zones = view==='biz'
+    ? ['master','purchase','inv','sales','acct','report']
+    : view==='sm'
+    ? ['purchase','inv','sales','acct','report']
+    : ['master','purchase','inv','sales','acct','report','legacy'];
+  const solid = view==='biz'?'主要流程':view==='sm'?'行為轉換':'資料庫外鍵';
+  const dashed = view==='sm'?'條件（自動觸發）':'邏輯關聯';
+  $('#legend').innerHTML =
+    zones.map(z=>`<span class="chip"><i style="background:${ZONES[z][1]}"></i>${ZONES[z][0]}</span>`).join('') +
+    `<span class="lstyle"><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke="#8895A3" stroke-width="2"/></svg>${solid}</span>
+     <span class="lstyle"><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke="#8895A3" stroke-width="1.6" stroke-dasharray="5 4"/></svg>${dashed}</span>` +
+    (view==='sm'?`<span class="lstyle"><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke="#8895A3" stroke-width="1.2" stroke-dasharray="2 4"/></svg>報表關聯</span>`:'');
+}
+
+document.getElementById('focusClear').onclick=()=>{ focusPage=null; refreshHighlight(); };
+
+addEventListener('resize',fit);
+buildLegend(); render();
+</script>
+
+</body>
+</html>

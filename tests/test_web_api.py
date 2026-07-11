@@ -134,6 +134,19 @@ class TestAccountingInvoiceAPI:
         assert r.status_code == 400
         assert "重複" in r.json()["detail"]
 
+    def test_string_numeric_line_fields_accepted(self, client):
+        """瀏覽器表單會把數字送成字串，API 應轉型後正常建立發票。"""
+        body = post_sales_invoice(client, quantity="10", unit_price="500",
+                                  tax_rate="5", cost_per_unit="300")
+        assert body["total_amount_with_tax"] == 5250
+
+        line = {**PURCHASE_LINE, "quantity": "2", "unit_price": "10000",
+                "tax_rate": "5"}
+        r = client.post("/api/accounting/purchase-invoices",
+                        json={"header": PURCHASE_HEADER, "lines": [line]})
+        assert r.status_code == 200, r.text
+        assert r.json()["total_amount_with_tax"] == 21000
+
     def test_unknown_header_field_client_error(self, client):
         header = {**SALES_HEADER, "no_such_field": "x"}
         r = client.post("/api/accounting/sales-invoices",
@@ -204,6 +217,92 @@ class TestPaymentAPI:
         r = client.post("/api/accounting/payments", json=pay)
         assert r.status_code == 400
         assert "重複" in r.json()["detail"]
+
+
+# ------------------------------------------------------------------ 發票/收付款列表（UI 用）
+
+class TestAccountingListAPI:
+    def test_list_sales_invoices(self, client):
+        inv = post_sales_invoice(client)
+        rows = client.get("/api/accounting/sales-invoices").json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["id"] == inv["id"]
+        assert row["invoice_number"] == "INV-0001"
+        assert row["customer_name"] == "永春牧場"
+        assert row["total_amount_with_tax"] == 5250
+        assert row["payment_status"] == "UNPAID"
+        assert row["remaining_balance"] == 5250
+
+    def test_list_purchase_invoices(self, client):
+        inv = post_purchase_invoice(client)
+        rows = client.get("/api/accounting/purchase-invoices").json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["id"] == inv["id"]
+        assert row["supplier_name"] == "原廠A"
+        assert row["total_amount_with_tax"] == 21000
+        assert row["payment_status"] == "UNPAID"
+
+    def test_list_payments_reflects_partial_payment(self, client):
+        inv = post_sales_invoice(client)
+        client.post("/api/accounting/payments", json=dict(
+            payment_number="PAY-0001", payment_type="RECEIPT_FROM_CUSTOMER",
+            reference_id=inv["id"], amount=2000, payment_method="CASH"))
+        rows = client.get("/api/accounting/payments").json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["payment_number"] == "PAY-0001"
+        assert row["payment_type"] == "RECEIPT_FROM_CUSTOMER"
+        assert row["amount"] == 2000
+        assert row["payment_method"] == "CASH"
+        assert row["reference_id"] == inv["id"]
+
+        invoices = client.get("/api/accounting/sales-invoices").json()
+        assert invoices[0]["payment_status"] == "PARTIAL"
+        assert invoices[0]["remaining_balance"] == 3250
+
+
+# ------------------------------------------------------------------ 系統架構圖
+
+class TestSystemMapUI:
+    def test_static_system_map_served(self, client):
+        r = client.get("/static/system_map.html")
+        assert r.status_code == 200
+        assert "資料庫 UML" in r.text
+
+    def test_spa_has_map_fab_and_modal(self, client):
+        html = client.get("/").text
+        assert "mapFab" in html
+        assert "system_map.html" in html
+        assert "系統架構圖" in html
+
+    def test_map_state_machine_view(self, client):
+        """第三檢視「狀態機」：原料→商品→售出→收款的生命週期＋報表註記。"""
+        map_html = client.get("/static/system_map.html").text
+        assert "btnSm" in map_html
+        assert "狀態機" in map_html
+        # 核心狀態與觸發行為
+        for token in ("s_bulk", "s_sell", "s_sold", "s_unpaid", "s_paid",
+                      "s_overdue", "FEFO", "分裝"):
+            assert token in map_html, token
+        # 報表註記節點
+        for note in ("n_ledger", "n_ar", "n_tax"):
+            assert note in map_html, note
+
+    def test_map_page_focus_wiring(self, client):
+        """SPA 開圖時 postMessage 目前頁面，地圖端有對應的聚焦設定。"""
+        html = client.get("/").text
+        assert "sendMapFocus" in html
+        assert "currentPage" in html
+        map_html = client.get("/static/system_map.html").text
+        assert "FOCUS" in map_html
+        assert "addEventListener('message'" in map_html
+        # 每個 SPA 頁面 key 都要有聚焦集合（儀表板除外＝全圖）
+        for key in ("purchase", "inventory", "sales", "sales-invoice",
+                    "purchase-invoice", "payment", "reports"):
+            # JS 物件 key：識別字不帶引號、含連字號帶引號
+            assert (f"{key}:" in map_html or f"'{key}':" in map_html), key
 
 
 # ------------------------------------------------------------------ 報表
